@@ -10,7 +10,7 @@ The application source no longer uses `.js` or `.jsx` files.
 
 Electron cannot execute TypeScript source directly in a portable way, so `npm run dev` and `npm run build:electron` use esbuild to generate:
 
-- `dist-electron/main.ts`
+- `dist-electron/main.mjs`
 - `dist-electron/preload.cjs`
 
 Those files are build output only. Do not edit them by hand.
@@ -31,9 +31,28 @@ src/App.tsx
 src/main.tsx
 src/components/Panel.tsx
 src/components/Toggle.tsx
+src/components/OverlayPreview.tsx
+src/components/GamePanel.tsx
+src/components/OverlayPanel.tsx
+src/components/FeaturesPanel.tsx
+src/game/engine.ts
+src/game/types.ts
+src/game/registry.ts
+src/game/useLiveGames.ts
+src/game/features.ts
+src/game/words.ts
+src/game/english.ts
+src/game/content/english.ts
+src/game/games/*.ts
+src/hooks/useNow.ts
+src/hooks/useWelcomeAlerts.ts
+src/overlay/main.tsx
+src/overlay/Overlay.tsx
 src/shared/types.ts
+src/shared/overlay.ts
 src/global.d.ts
 electron/main.ts
+electron/overlay-server.ts
 electron/preload.ts
 scripts/dev.ts
 scripts/build-electron.ts

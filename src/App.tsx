@@ -5,14 +5,25 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type FormEvent,
   type KeyboardEvent
 } from 'react';
+import FeaturesPanel from './components/FeaturesPanel';
+import GamePanel from './components/GamePanel';
+import OverlayPanel from './components/OverlayPanel';
 import Panel from './components/Panel';
 import Toggle from './components/Toggle';
+import { remainingMs, topScores } from './game/engine';
+import type { TestInput } from './game/types';
+import { useLiveGames } from './game/useLiveGames';
+import { useNow } from './hooks/useNow';
+import { useWelcomeAlerts } from './hooks/useWelcomeAlerts';
 import type {
   AudioTrack,
   LiveEvent,
   MusicRules,
+  OverlayInfo,
+  OverlayState,
   TikTokStatus
 } from './shared/types';
 
@@ -28,8 +39,23 @@ const DEFAULT_RULES: MusicRules = {
   likeThreshold: 100,
   giftNextEnabled: false,
   giftName: 'Rose',
-  giftThreshold: 10
+  giftThreshold: 10,
+  commentCooldownSeconds: 2
 };
+
+const EVENT_ICONS: Record<string, string> = { chat: '💬', gift: '🎁', like: '♥', follow: '＋', join: '👋' };
+
+/** Filename without extension, for viewer-facing labels. */
+function trackTitle(name: string): string {
+  return name.replace(/\.[^.]+$/, '') || name;
+}
+
+function randomViewer(poolSize = 30): string {
+  return `viewer_${Math.floor(Math.random() * poolSize) + 1}`;
+}
+
+/** Game test buttons reuse a small crowd so e.g. team members come back to like. */
+const GAME_TEST_VIEWERS = 8;
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds)) return '00:00';
@@ -44,6 +70,7 @@ function eventLabel(event: LiveEvent): string {
   if (event.type === 'gift' && 'giftName' in event) return `${event.giftName} ×${event.count}`;
   if (event.type === 'like' && 'count' in event) return `+${event.count} likes`;
   if (event.type === 'follow') return 'Follow';
+  if (event.type === 'join') return 'Vào phòng';
   return event.type;
 }
 
@@ -76,6 +103,9 @@ export default function App() {
   const [likeProgress, setLikeProgress] = useState(0);
   const [giftProgress, setGiftProgress] = useState(0);
   const [lastAction, setLastAction] = useState('Chưa có action');
+  const [overlayInfo, setOverlayInfo] = useState<OverlayInfo>({ url: null });
+  const [testComment, setTestComment] = useState('');
+  const [showTestTools, setShowTestTools] = useState(false);
 
   const currentTrack = currentIndex >= 0 ? playlist[currentIndex] ?? null : null;
 
@@ -127,10 +157,30 @@ export default function App() {
     selectTrack(prev, 'Previous');
   }, [currentIndex, playlist.length, selectTrack]);
 
+  const games = useLiveGames({
+    playlist,
+    currentTrackId: currentTrack?.id ?? null,
+    cooldownSeconds: rules.commentCooldownSeconds,
+    onPlayTrack: (trackId, reason) => {
+      const index = playlist.findIndex((track) => track.id === trackId);
+      if (index >= 0) selectTrack(index, reason);
+      else setLastAction('Bài thắng đã bị xoá khỏi playlist');
+    },
+    onAction: setLastAction
+  });
+  const welcome = useWelcomeAlerts(games.features);
+  const { acceptCommand, handleEvent: handleGameEvent } = games;
+  const { handleEvent: handleWelcomeEvent } = welcome;
+  const now = useNow(games.game.phase === 'running', 500);
+
   const processLiveEvent = useCallback((event: LiveEvent) => {
     setEvents((old) => [event, ...old].slice(0, 120));
+    handleWelcomeEvent(event);
 
-    if (event.type === 'chat' && 'comment' in event) {
+    // The running game sees the event first; comments it consumes skip the music rules.
+    const { consumed } = handleGameEvent(event);
+
+    if (event.type === 'chat' && 'comment' in event && !consumed) {
       const comment = String(event.comment || '').trim();
       const lower = comment.toLowerCase();
 
@@ -138,14 +188,14 @@ export default function App() {
         rules.commentNextEnabled &&
         lower === rules.commentNextCommand.trim().toLowerCase()
       ) {
-        nextTrack(`@${event.user} dùng ${rules.commentNextCommand}`);
+        if (acceptCommand(event.user)) nextTrack(`@${event.user} dùng ${rules.commentNextCommand}`);
         return;
       }
 
       if (rules.commentNumberEnabled && /^\d+$/.test(comment)) {
         const index = Number(comment) - 1;
         if (index >= 0 && index < playlist.length) {
-          selectTrack(index, `@${event.user} chọn #${comment}`);
+          if (acceptCommand(event.user)) selectTrack(index, `@${event.user} chọn #${comment}`);
           return;
         }
       }
@@ -154,7 +204,7 @@ export default function App() {
       if (rules.commentSearchEnabled && lower.startsWith(searchPrefix)) {
         const query = lower.slice(searchPrefix.length).trim();
         const index = playlist.findIndex((track) => track.name.toLowerCase().includes(query));
-        if (index >= 0) {
+        if (index >= 0 && acceptCommand(event.user)) {
           selectTrack(index, `@${event.user} tìm “${query}”`);
         }
       }
@@ -186,7 +236,32 @@ export default function App() {
         return next;
       });
     }
-  }, [nextTrack, playlist, rules, selectTrack]);
+  }, [acceptCommand, handleGameEvent, handleWelcomeEvent, nextTrack, playlist, rules, selectTrack]);
+
+  const { game, gameView } = games;
+  const overlayState = useMemo<Omit<OverlayState, 'updatedAt'>>(() => ({
+    game: {
+      ...gameView,
+      title: game.title,
+      phase: game.phase,
+      endsAt: game.endsAt,
+      message: game.message
+    },
+    leaderboard: topScores(game, 5),
+    nowPlaying: currentTrack ? trackTitle(currentTrack.name) : null,
+    alert: welcome.alert
+  }), [currentTrack, game, gameView, welcome.alert]);
+
+  useEffect(() => {
+    window.desktop?.updateOverlay({ ...overlayState, updatedAt: Date.now() });
+  }, [overlayState]);
+
+  useEffect(() => {
+    if (!window.desktop) return;
+    window.desktop.getOverlayInfo()
+      .then(setOverlayInfo)
+      .catch((error: unknown) => setOverlayInfo({ url: null, error: errorMessage(error) }));
+  }, []);
 
   useEffect(() => {
     if (!window.desktop) return undefined;
@@ -285,6 +360,25 @@ export default function App() {
     setRules((old) => ({ ...old, [key]: value }));
   }
 
+  function simulate(input: Parameters<typeof window.desktop.simulateTikTokEvent>[0]): void {
+    void window.desktop.simulateTikTokEvent(input);
+  }
+
+  function sendGameTest(input: TestInput): void {
+    const user = randomViewer(GAME_TEST_VIEWERS);
+    if (input.kind === 'chat') simulate({ type: 'chat', user, comment: input.text });
+    else if (input.kind === 'like') simulate({ type: 'like', user, count: input.count });
+    else simulate({ type: 'gift', user, giftName: input.giftName, count: input.count });
+  }
+
+  function sendTestComment(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const comment = testComment.trim();
+    if (!comment) return;
+    simulate({ type: 'chat', user: randomViewer(), comment });
+    setTestComment('');
+  }
+
   function removeTrack(index: number): void {
     const track = playlist[index];
     if (track?.source === 'react-file-input' && track.url.startsWith('blob:')) {
@@ -300,6 +394,8 @@ export default function App() {
       setCurrentIndex((old) => old - 1);
     }
   }
+
+  const testVisible = connection.status !== 'connected' || showTestTools;
 
   const connectionText = useMemo(() => {
     const map: Record<TikTokStatus['status'], string> = {
@@ -349,13 +445,40 @@ export default function App() {
               <button className="button" onClick={() => void disconnect()}>Disconnect</button>
             </div>
             {connection.message ? <p className="error-text">{connection.message}</p> : null}
-            <div className="sim-row">
-              <span>Test:</span>
-              <button className="chip" onClick={() => void window.desktop.simulateTikTokEvent({ type: 'chat', comment: '!next' })}>!next</button>
-              <button className="chip" onClick={() => void window.desktop.simulateTikTokEvent({ type: 'chat', comment: '2' })}>comment 2</button>
-              <button className="chip" onClick={() => void window.desktop.simulateTikTokEvent({ type: 'like', count: 25 })}>+25 likes</button>
-              <button className="chip" onClick={() => void window.desktop.simulateTikTokEvent({ type: 'gift', giftName: 'Rose', count: 5 })}>Rose ×5</button>
-            </div>
+            {testVisible ? (
+              <>
+                {connection.status === 'connected' ? (
+                  <p className="error-text">Đang kết nối LIVE: event test sẽ tác động lên game và nhạc thật.</p>
+                ) : (
+                  <p className="field-hint test-hint">Chưa kết nối TikTok, hãy dùng các nút test bên dưới và trong panel Game để thử.</p>
+                )}
+                <div className="sim-row">
+                  <span>Test:</span>
+                  <button className="chip" onClick={() => simulate({ type: 'chat', comment: '!next' })}>!next</button>
+                  <button className="chip" onClick={() => simulate({ type: 'chat', user: randomViewer(), comment: String(Math.floor(Math.random() * 3) + 1) })}>comment 1–3</button>
+                  <button className="chip" onClick={() => simulate({ type: 'chat', user: randomViewer(), comment: ['A', 'B', 'C', 'D'][Math.floor(Math.random() * 4)] })}>comment A–D</button>
+                  <button className="chip" onClick={() => simulate({ type: 'like', user: randomViewer(), count: Math.floor(Math.random() * 26) + 5 })}>like ngẫu nhiên</button>
+                  <button className="chip" onClick={() => simulate({ type: 'gift', user: randomViewer(), giftName: 'Rose', count: 5 })}>Rose ×5</button>
+                  <button className="chip" onClick={() => simulate({ type: 'follow', user: randomViewer() })}>follow</button>
+                  <button className="chip" onClick={() => simulate({ type: 'join', user: randomViewer() })}>vào phòng</button>
+                </div>
+                <form className="test-comment" onSubmit={sendTestComment}>
+                  <input
+                    className="text-input"
+                    value={testComment}
+                    maxLength={150}
+                    onChange={(event) => setTestComment(event.target.value)}
+                    placeholder="Comment thử từ viewer ngẫu nhiên (vd: nhạc sĩ, 42, A)"
+                  />
+                  <button className="button" type="submit">Gửi</button>
+                </form>
+                {connection.status === 'connected' ? (
+                  <button className="button small ghost" onClick={() => setShowTestTools(false)}>Ẩn công cụ test</button>
+                ) : null}
+              </>
+            ) : (
+              <button className="button small ghost show-test" onClick={() => setShowTestTools(true)}>🧪 Hiện công cụ test</button>
+            )}
           </Panel>
 
           <Panel title="Music Player" aside={currentTrack?.name || 'Chưa chọn bài'}>
@@ -450,8 +573,41 @@ export default function App() {
         </div>
 
         <aside className="side-column">
+          <GamePanel
+            games={games.games}
+            selectedId={games.selectedId}
+            onSelect={games.setSelectedId}
+            rawConfigs={games.rawConfigs}
+            onConfigChange={games.setConfigValue}
+            onResetConfig={games.resetConfig}
+            game={game}
+            view={gameView}
+            remainingMs={remainingMs(game, now)}
+            leaderboard={overlayState.leaderboard}
+            onStart={games.start}
+            onFinish={games.finish}
+            onCancel={games.cancel}
+            onResetScores={games.resetScores}
+            dictionaries={{ vi: games.dictionary, en: games.englishDictionary }}
+            onImportDictionary={(language, text) => setLastAction(`Đã nhập ${games.importDictionary(language, text)} từ vào từ điển ${language === 'vi' ? 'tiếng Việt' : 'tiếng Anh'}`)}
+            onClearDictionary={games.clearDictionary}
+            testVisible={testVisible}
+            testActions={games.testActions}
+            onTest={sendGameTest}
+          />
+
+          <OverlayPanel info={overlayInfo} onAction={setLastAction} />
+
+          <FeaturesPanel features={games.features} onChange={games.setFeatures} />
+
           <Panel title="Rules">
             <div className="rule-stack">
+              <label className="inline-field flush">
+                <span>Chống spam (giây)</span>
+                <input type="number" min={0} max={60} value={rules.commentCooldownSeconds} onChange={(event) => updateRule('commentCooldownSeconds', Number(event.target.value))} />
+              </label>
+              <p className="field-hint">Mỗi viewer chỉ được 1 lệnh comment trong khoảng này. 0 = tắt.</p>
+
               <Toggle
                 checked={rules.autoNextEnabled}
                 onChange={(value) => updateRule('autoNextEnabled', value)}
@@ -526,7 +682,7 @@ export default function App() {
                 <p className="empty-copy">Kết nối LIVE hoặc dùng nút Test để xem event.</p>
               ) : events.map((event) => (
                 <div className={`event-row event-${event.type}`} key={event.id}>
-                  <div className="event-avatar">{event.type === 'chat' ? '💬' : event.type === 'gift' ? '🎁' : event.type === 'like' ? '♥' : '＋'}</div>
+                  <div className="event-avatar">{EVENT_ICONS[event.type] ?? '＋'}</div>
                   <div>
                     <strong>@{event.user}</strong>
                     <p>{eventLabel(event)}</p>

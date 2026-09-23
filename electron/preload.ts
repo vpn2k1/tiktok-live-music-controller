@@ -3,6 +3,8 @@ import type {
   AudioTrack,
   DesktopApi,
   LiveEvent,
+  OverlayInfo,
+  OverlayState,
   SimulatedEventInput,
   TikTokConnectResult,
   TikTokStatus
@@ -20,7 +22,9 @@ const desktopApi: DesktopApi = {
   disconnectTikTok: () => ipcRenderer.invoke('tiktok:disconnect') as Promise<boolean>,
   simulateTikTokEvent: (event: SimulatedEventInput) => ipcRenderer.invoke('tiktok:simulate', event) as Promise<boolean>,
   onTikTokEvent: (callback: (event: LiveEvent) => void) => on<LiveEvent>('tiktok:event', callback),
-  onTikTokStatus: (callback: (status: TikTokStatus) => void) => on<TikTokStatus>('tiktok:status', callback)
+  onTikTokStatus: (callback: (status: TikTokStatus) => void) => on<TikTokStatus>('tiktok:status', callback),
+  getOverlayInfo: () => ipcRenderer.invoke('overlay:info') as Promise<OverlayInfo>,
+  updateOverlay: (state: OverlayState) => ipcRenderer.send('overlay:update', state)
 };
 
 contextBridge.exposeInMainWorld('desktop', desktopApi);

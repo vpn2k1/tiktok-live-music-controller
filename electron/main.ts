@@ -11,9 +11,11 @@ import {
 import type {
   AudioTrack,
   LiveEvent,
+  OverlayInfo,
   SimulatedEventInput,
   TikTokStatus
 } from '../src/shared/types';
+import { publishOverlay, startOverlayServer, stopOverlayServer } from './overlay-server';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +39,7 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 let mainWindow: BrowserWindow | null = null;
 let liveConnection: TikTokLiveConnection | null = null;
 const mediaFiles = new Map<string, string>();
+let overlayInfo: OverlayInfo = { url: null, error: 'Overlay server chưa khởi động.' };
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -117,6 +120,10 @@ function normalizeEvent(type: string, rawData: unknown = {}): LiveEvent {
     return { ...base, type: 'follow' };
   }
 
+  if (type === 'join') {
+    return { ...base, type: 'join' };
+  }
+
   return base;
 }
 
@@ -149,7 +156,7 @@ async function connectTikTok(rawUsername: string) {
   await disconnectTikTok();
   emitStatus('connecting', { username });
 
-  const connection = new TikTokLiveConnection(username);
+  const connection = new TikTokLiveConnection(username, {});
   liveConnection = connection;
 
   connection.on(ControlEvent.CONNECTED, (state: unknown) => {
@@ -171,16 +178,17 @@ async function connectTikTok(rawUsername: string) {
   });
 
   connection.on(WebcastEvent.CHAT, (data: unknown) => emitLiveEvent('chat', data));
-  connection.on(WebcastEvent.GIFT, (data: unknown) => emitLiveEvent('gift', data));
-  connection.on(WebcastEvent.LIKE, (data: unknown) => emitLiveEvent('like', data));
-  connection.on(WebcastEvent.SOCIAL, (data: unknown) => {
+  connection.on(WebcastEvent.GIFT, (data: unknown) => {
+    // Streakable gifts (giftType 1) fire repeatedly with a growing repeatCount;
+    // only the final event (repeatEnd) carries the total, so skip the rest.
     const record = asRecord(data);
-    const displayType = stringValue(record.displayType).toLowerCase();
-    const label = stringValue(record.label).toLowerCase();
-    if (displayType.includes('follow') || label.includes('follow')) {
-      emitLiveEvent('follow', data);
-    }
+    const giftType = numberValue(nestedRecord(record, 'giftDetails').giftType, 0);
+    if (giftType === 1 && !record.repeatEnd) return;
+    emitLiveEvent('gift', data);
   });
+  connection.on(WebcastEvent.LIKE, (data: unknown) => emitLiveEvent('like', data));
+  connection.on(WebcastEvent.FOLLOW, (data: unknown) => emitLiveEvent('follow', data));
+  connection.on(WebcastEvent.MEMBER, (data: unknown) => emitLiveEvent('join', data));
 
   try {
     const state = await connection.connect();
@@ -296,11 +304,15 @@ app.whenReady().then(async () => {
     });
   });
 
+  ipcMain.handle('overlay:info', () => overlayInfo);
+  ipcMain.on('overlay:update', (_event, state: unknown) => publishOverlay(state));
+
   ipcMain.handle('tiktok:connect', (_event, username: string) => connectTikTok(username));
   ipcMain.handle('tiktok:disconnect', () => disconnectTikTok());
 
   ipcMain.handle('tiktok:simulate', (_event, input: SimulatedEventInput = { type: 'chat' }) => {
-    const type = input.type || 'chat';
+    const allowed: SimulatedEventInput['type'][] = ['chat', 'gift', 'like', 'follow', 'join'];
+    const type = allowed.includes(input.type) ? input.type : 'chat';
     const fake = {
       user: {
         uniqueId: input.user || 'demo_viewer',
@@ -316,11 +328,20 @@ app.whenReady().then(async () => {
     return true;
   });
 
+  overlayInfo = await startOverlayServer({
+    distDir: path.join(__dirname, '..', 'dist'),
+    devServerUrl: isDev ? process.env.VITE_DEV_SERVER_URL : undefined
+  });
+
   createWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('will-quit', () => {
+  stopOverlayServer();
 });
 
 app.on('window-all-closed', () => {

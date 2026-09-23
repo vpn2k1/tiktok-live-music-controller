@@ -14,4 +14,12 @@ HTMLAudioElement
 local audio via media:// token protocol
 ```
 
-No Express/WebSocket server is required in this Electron version.
+```text
+React renderer
+  ↓ IPC overlay:update
+Electron main overlay-server (127.0.0.1:17321, SSE)
+  ↓
+overlay.html in OBS Browser Source
+```
+
+No Express/WebSocket dependency: the overlay uses Node `http` + Server-Sent Events.

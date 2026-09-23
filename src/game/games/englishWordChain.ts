@@ -1,0 +1,106 @@
+import type { PointAward } from '../engine';
+import { isEnglishAttempt, looksLikeEnglishWord, normalizeEnglish, type EnglishDictionary } from '../english';
+import { chatTest, view, type GameDefinition } from '../types';
+
+export interface EnglishChainRound {
+  current: string;
+  chain: { word: string; nickname: string }[];
+  used: string[];
+  words: Record<string, { nickname: string; count: number }>;
+}
+
+type EnglishChainConfig = { turnSeconds: number; minLength: number; mode: string };
+
+const HISTORY = 20;
+
+function lastLetter(word: string): string {
+  return word.slice(-1);
+}
+
+export function pickEnglishStart(dictionary: EnglishDictionary, random: () => number): string {
+  const all = [...dictionary.words].filter((word) => word.length >= 3);
+  const firstLetters = new Set(all.map((word) => word[0]));
+  const pool = all.filter((word) => firstLetters.has(lastLetter(word)));
+  return pool[Math.floor(random() * pool.length)] ?? 'apple';
+}
+
+export const englishWordChainGame: GameDefinition<EnglishChainRound, EnglishChainConfig> = {
+  id: 'englishWordChain',
+  title: 'Word Chain (EN) 🔗',
+  category: 'english',
+  howTo: 'Comment một từ tiếng Anh bắt đầu bằng chữ cái cuối của từ trước (apple → egg → giraffe). Không lặp từ. Mỗi từ +1, hết lượt không ai nối thì kết thúc.',
+  defaultConfig: { turnSeconds: 30, minLength: 3, mode: 'letters' },
+  settings: [
+    { key: 'turnSeconds', label: 'Giây mỗi lượt', type: 'number', min: 10, max: 120 },
+    { key: 'minLength', label: 'Số chữ cái tối thiểu', type: 'number', min: 2, max: 10 },
+    {
+      key: 'mode',
+      label: 'Kiểm tra từ',
+      type: 'select',
+      options: [
+        { value: 'letters', label: 'Từ trông hợp lệ (có nguyên âm)' },
+        { value: 'dictionary', label: 'Chỉ từ có trong từ điển' }
+      ],
+      hint: 'Chế độ từ điển nên dùng khi đã nhập file từ điển tiếng Anh.'
+    }
+  ],
+
+  start(config, ctx) {
+    const current = pickEnglishStart(ctx.englishDictionary, ctx.random);
+    return {
+      state: { current, chain: [{ word: current, nickname: 'Start' }], used: [current], words: {} },
+      durationMs: config.turnSeconds * 1000
+    };
+  },
+
+  handle(state, input, config, ctx) {
+    if (input.kind !== 'chat' || !isEnglishAttempt(input.text)) return null;
+    const word = normalizeEnglish(input.text);
+    if (word.includes(' ')) return null;
+
+    if (word[0] !== lastLetter(state.current)) return { state, consumed: true };
+    if (state.used.includes(word)) return { state, consumed: true, message: `“${word}” đã dùng rồi!` };
+    const valid = config.mode === 'dictionary' ? ctx.englishDictionary.words.has(word) && word.length >= config.minLength : looksLikeEnglishWord(word, config.minLength);
+    if (!valid) return { state, consumed: true, message: `“${word}” không hợp lệ.` };
+
+    const old = state.words[input.user];
+    return {
+      consumed: true,
+      message: `${input.nickname}: ${state.current} → ${word}`,
+      endsAt: ctx.now + config.turnSeconds * 1000,
+      state: {
+        current: word,
+        chain: [...state.chain, { word, nickname: input.nickname }].slice(-HISTORY),
+        used: [...state.used, word],
+        words: { ...state.words, [input.user]: { nickname: input.nickname, count: (old?.count ?? 0) + 1 } }
+      }
+    };
+  },
+
+  finish(state) {
+    const awards: PointAward[] = Object.entries(state.words).map(([user, entry]) => ({ user, nickname: entry.nickname, points: entry.count }));
+    const length = state.used.length - 1;
+    return {
+      state,
+      awards,
+      message: length > 0 ? `Time's up! Chuỗi ${length} từ, dừng ở “${state.current}”.` : `Chưa ai nối được “${state.current}”.`
+    };
+  },
+
+  testActions(state, config, ctx) {
+    const next = [...ctx.englishDictionary.words].find((word) => word[0] === lastLetter(state.current) && word.length >= config.minLength && !state.used.includes(word));
+    return [
+      ...(next ? [chatTest(`Nối đúng: ${next}`, next, 3)] : []),
+      chatTest('Sai chữ đầu', 'zebra', 1),
+      ...(state.used[0] ? [chatTest('Từ đã dùng', state.used[0], 0.5)] : [])
+    ];
+  },
+
+  view(state) {
+    return view({
+      headline: state.current.toUpperCase(),
+      hint: `Next word starts with “${lastLetter(state.current).toUpperCase()}”`,
+      rows: state.chain.slice(-5, -1).reverse().map((entry) => ({ label: entry.word, value: entry.nickname }))
+    });
+  }
+};
