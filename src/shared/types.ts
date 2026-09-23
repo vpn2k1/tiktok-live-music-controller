@@ -1,3 +1,5 @@
+import type { OverlayConfig } from './overlay';
+
 export type TikTokEventType = 'chat' | 'gift' | 'like' | 'follow' | 'join' | string;
 
 export interface BaseLiveEvent {
@@ -6,6 +8,8 @@ export interface BaseLiveEvent {
   user: string;
   nickname: string;
   at: number;
+  /** Set by main for events created by the app's test tools (never for real TikTok events). */
+  simulated?: boolean;
 }
 
 export interface ChatLiveEvent extends BaseLiveEvent {
@@ -82,6 +86,8 @@ export interface ScoreEntry {
 /** One list line on the overlay: vote option, quiz answer, attacker, chain word… */
 export interface OverlayRow {
   label: string;
+  /** Viewer name to draw a colored initial badge for (people rows). */
+  avatar?: string;
   value?: string;
   /** 0–100; draws a bar under the label when set. */
   percent?: number;
@@ -106,6 +112,29 @@ export interface OverlayRace {
   lanes: { label: string; percent: number }[];
 }
 
+/** Visual treatment hints a game can ask the overlay for. */
+export interface OverlayStyle {
+  /** `tiles`: one letter per tile (word games); `boss`: big animated character. */
+  headline?: 'text' | 'tiles' | 'boss';
+  /** `quiz`: Kahoot-style colored answer tiles. */
+  rows?: 'list' | 'quiz';
+}
+
+/** Short "how to join" chip shown under the game (icon + text). */
+export interface OverlayHowTo {
+  icon: string;
+  text: string;
+}
+
+/** One-shot visual/sound effect; the overlay plays each id once. */
+export interface OverlayEffect {
+  id: number;
+  kind: 'start' | 'hit' | 'score' | 'correct' | 'wrong' | 'win' | 'lose';
+  text?: string;
+  /** Viewer the effect is about (for avatar badges). */
+  user?: string;
+}
+
 export interface OverlayWheel {
   segments: string[];
   /** Increments per spin; the overlay animates when it changes. */
@@ -124,11 +153,13 @@ export interface OverlayGameView {
   teams: [OverlayTeam, OverlayTeam] | null;
   race: OverlayRace | null;
   wheel: OverlayWheel | null;
+  style?: OverlayStyle;
 }
 
 export interface OverlayAlert {
   id: number;
-  kind: 'follow' | 'join';
+  /** `info`: replies to chat commands such as !rank / !help. */
+  kind: 'follow' | 'join' | 'info';
   text: string;
 }
 
@@ -138,8 +169,14 @@ export interface OverlayState {
     title: string;
     phase: GamePhase;
     endsAt: number | null;
+    /** When the current deadline was set (for the countdown ring). */
+    timerStartedAt: number | null;
     message: string;
+    /** Accent color of the running game. */
+    accent: string;
+    howTo: OverlayHowTo[];
   };
+  effects: OverlayEffect[];
   leaderboard: ScoreEntry[];
   nowPlaying: string | null;
   alert: OverlayAlert | null;
@@ -174,5 +211,11 @@ export interface DesktopApi {
   onTikTokEvent: (callback: (event: LiveEvent) => void) => () => void;
   onTikTokStatus: (callback: (status: TikTokStatus) => void) => () => void;
   getOverlayInfo: () => Promise<OverlayInfo>;
+  /** Fires when the overlay server comes up later (e.g. the port was busy at start). */
+  onOverlayInfo: (callback: (info: OverlayInfo) => void) => () => void;
   updateOverlay: (state: OverlayState) => void;
+  /** Opens (or refreshes) a separate window showing the overlay, for OBS Window Capture. */
+  openOverlayWindow: (config: OverlayConfig) => Promise<{ ok: boolean; error?: string }>;
+  /** Zooms the controller UI (0.8–1.6); layout reflows like browser zoom. */
+  setUiZoom: (factor: number) => void;
 }

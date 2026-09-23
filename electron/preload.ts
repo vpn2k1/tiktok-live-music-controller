@@ -1,4 +1,5 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webFrame, type IpcRendererEvent } from 'electron';
+import type { OverlayConfig } from '../src/shared/overlay';
 import type {
   AudioTrack,
   DesktopApi,
@@ -24,7 +25,13 @@ const desktopApi: DesktopApi = {
   onTikTokEvent: (callback: (event: LiveEvent) => void) => on<LiveEvent>('tiktok:event', callback),
   onTikTokStatus: (callback: (status: TikTokStatus) => void) => on<TikTokStatus>('tiktok:status', callback),
   getOverlayInfo: () => ipcRenderer.invoke('overlay:info') as Promise<OverlayInfo>,
-  updateOverlay: (state: OverlayState) => ipcRenderer.send('overlay:update', state)
+  onOverlayInfo: (callback: (info: OverlayInfo) => void) => on<OverlayInfo>('overlay:info-changed', callback),
+  updateOverlay: (state: OverlayState) => ipcRenderer.send('overlay:update', state),
+  openOverlayWindow: (config: OverlayConfig) => ipcRenderer.invoke('overlay:open-window', config) as Promise<{ ok: boolean; error?: string }>,
+  setUiZoom: (factor: number) => {
+    const value = Number(factor);
+    if (Number.isFinite(value)) webFrame.setZoomFactor(Math.min(1.6, Math.max(0.8, value)));
+  }
 };
 
 contextBridge.exposeInMainWorld('desktop', desktopApi);

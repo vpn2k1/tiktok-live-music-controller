@@ -1,5 +1,5 @@
 import type { PointAward } from '../engine';
-import { chatTest, giftTest, likeTest, view, type GameDefinition } from '../types';
+import { chatTest, commandArgument, giftTest, likeTest, view, type GameDefinition } from '../types';
 
 export interface TeamRound {
   names: [string, string];
@@ -22,7 +22,15 @@ export const teamBattleGame: GameDefinition<TeamRound, TeamConfig> = {
   id: 'teamBattle',
   title: 'Team battle ⚔️',
   category: 'fun',
+  accent: '#a855f7',
   howTo: 'Comment A hoặc B để vào đội (không đổi được). Tim và gift của thành viên cộng điểm cho đội. Đội thua chịu phạt.',
+  commands: [
+    { usage: 'A / B', description: 'Vào đội A hoặc B' },
+    { usage: '!join a / !join b', description: 'Cách viết khác' },
+    { usage: '!join', description: 'Vào đội đang ít người hơn' },
+    { usage: 'Thả tim / gift', description: 'Cộng điểm cho đội mình' }
+  ],
+  aliases: ['team'],
   defaultConfig: { seconds: 120, teamA: 'Đội Đỏ', teamB: 'Đội Xanh', giftPoints: 10, penalty: 'Đội thua hát tặng đội thắng 1 câu' },
   settings: [
     { key: 'seconds', label: 'Thời gian (giây)', type: 'number', min: 10, max: 900 },
@@ -41,10 +49,23 @@ export const teamBattleGame: GameDefinition<TeamRound, TeamConfig> = {
 
   handle(state, input, config) {
     if (input.kind === 'chat') {
-      const text = input.text.trim().toUpperCase();
-      if (text !== 'A' && text !== 'B') return null;
+      const joinArg = commandArgument(input.text, ['join', 'team']);
+      const shortcut = commandArgument(input.text, ['a', 'b']);
+      let choice: string | null = null;
+      if (input.text.trim().startsWith('!')) {
+        if (joinArg !== null) choice = joinArg.trim().toUpperCase() || 'AUTO';
+        else if (shortcut === '') choice = input.text.trim().slice(1).toUpperCase();
+      } else {
+        choice = input.text.trim().toUpperCase();
+      }
+      if (choice !== 'A' && choice !== 'B' && choice !== 'AUTO') return null;
       if (state.members[input.user]) return { state, consumed: true };
-      const team = text === 'A' ? 0 : 1;
+      let team: 0 | 1 = choice === 'A' ? 0 : 1;
+      if (choice === 'AUTO') {
+        const counts = [0, 0];
+        for (const member of Object.values(state.members)) counts[member.team] += 1;
+        team = (counts[0] ?? 0) <= (counts[1] ?? 0) ? 0 : 1;
+      }
       return {
         consumed: true,
         message: `${input.nickname} vào ${state.names[team]}`,
@@ -59,6 +80,8 @@ export const teamBattleGame: GameDefinition<TeamRound, TeamConfig> = {
     scores[member.team] += amount;
     return {
       consumed: false,
+      // Gifts are rare and worth a pop; likes stream too fast for per-event effects.
+      effects: input.kind === 'gift' ? [{ kind: 'score', text: `+${amount} ${state.names[member.team]}`, user: input.nickname }] : undefined,
       state: {
         ...state,
         scores,
@@ -84,14 +107,14 @@ export const teamBattleGame: GameDefinition<TeamRound, TeamConfig> = {
 
   testActions() {
     // Likes/gifts only count for viewers who already joined a team.
-    return [chatTest('Vào đội A', 'A', 2), chatTest('Vào đội B', 'B', 2), likeTest(10, 3), giftTest('Rose', 1)];
+    return [chatTest('Vào đội A', 'A', 2), chatTest('!join b', '!join b', 1), chatTest('!join', '!join', 1), likeTest(10, 3), giftTest('Rose', 1)];
   },
 
   view(state, config) {
     const counts: [number, number] = [0, 0];
     for (const member of Object.values(state.members)) counts[member.team] += 1;
     return view({
-      hint: `Comment A hoặc B để vào đội • Tim +1 • Gift +${config.giftPoints}`,
+      hint: `Comment A / B hoặc !join để vào đội • Tim +1 • Gift +${config.giftPoints}`,
       teams: [
         { label: state.names[0], score: state.scores[0], members: counts[0] },
         { label: state.names[1], score: state.scores[1], members: counts[1] }

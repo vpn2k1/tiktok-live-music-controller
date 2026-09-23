@@ -1,4 +1,4 @@
-import type { GamePhase, ScoreEntry } from '../shared/types';
+import type { GamePhase, OverlayEffect, ScoreEntry } from '../shared/types';
 
 /**
  * Shared round + leaderboard state. Every function here is pure so it is safe
@@ -12,7 +12,12 @@ export interface GameState {
   startedAt: number | null;
   /** null while running = no timer. */
   endsAt: number | null;
+  /** When `endsAt` was last set (word chain resets it every answer). */
+  timerStartedAt: number | null;
   message: string;
+  /** Recent one-shot effects for the overlay/sounds (ids increase). */
+  effects: OverlayEffect[];
+  effectSeq: number;
   /** Per-game round state, owned by that game's module. */
   data: unknown;
   /** Last finished round state per game id. */
@@ -34,11 +39,26 @@ export function createGameState(): GameState {
     phase: 'idle',
     startedAt: null,
     endsAt: null,
+    timerStartedAt: null,
     message: '',
+    effects: [],
+    effectSeq: 0,
     data: null,
     memory: {},
     scores: {}
   };
+}
+
+export type EffectInput = Omit<OverlayEffect, 'id'>;
+
+const MAX_EFFECTS = 8;
+
+/** Appends effects with increasing ids, keeping only the most recent few. */
+export function pushEffects(state: GameState, effects: EffectInput[] | undefined): GameState {
+  if (!effects?.length) return state;
+  let seq = state.effectSeq;
+  const added = effects.map((effect) => ({ ...effect, id: ++seq }));
+  return { ...state, effectSeq: seq, effects: [...state.effects, ...added].slice(-MAX_EFFECTS) };
 }
 
 export function startRound(
@@ -53,6 +73,7 @@ export function startRound(
     phase: 'running',
     startedAt: now,
     endsAt: round.durationMs == null ? null : now + Math.max(1000, round.durationMs),
+    timerStartedAt: round.durationMs == null ? null : now,
     message: round.message ?? '',
     data: round.data
   };
@@ -61,13 +82,13 @@ export function startRound(
 export function endRound(state: GameState, message: string, data: unknown = state.data): GameState {
   if (state.phase !== 'running') return state;
   const memory = state.kind ? { ...state.memory, [state.kind]: data } : state.memory;
-  return { ...state, phase: 'ended', endsAt: null, message, data, memory };
+  return { ...state, phase: 'ended', endsAt: null, timerStartedAt: null, message, data, memory };
 }
 
 /** Hides the round from the overlay but keeps the session leaderboard. */
 export function clearRound(state: GameState): GameState {
   if (state.phase === 'idle') return state;
-  return { ...state, kind: null, title: '', phase: 'idle', startedAt: null, endsAt: null, message: '', data: null };
+  return { ...state, kind: null, title: '', phase: 'idle', startedAt: null, endsAt: null, timerStartedAt: null, message: '', data: null };
 }
 
 export function remainingMs(state: GameState, now: number): number {

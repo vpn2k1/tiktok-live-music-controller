@@ -1,7 +1,7 @@
 import { VOCAB_BANK } from '../content/english';
 import type { PointAward } from '../engine';
 import { aliases, normalizeEnglish } from '../english';
-import { chatTest, pickUnasked, ranked, view, type GameDefinition } from '../types';
+import { chatTest, commandArgument, pickUnasked, ranked, view, type GameDefinition } from '../types';
 
 export interface HangmanRound {
   word: string;
@@ -35,7 +35,13 @@ export const hangmanGame: GameDefinition<HangmanRound, HangmanConfig> = {
   id: 'hangman',
   title: 'Hangman 🪢',
   category: 'english',
+  accent: '#84cc16',
   howTo: 'Comment 1 chữ cái để lật từ bí mật, hoặc gõ cả từ nếu đã đoán ra. Chữ cái sai bị trừ lượt. Mỗi chữ đúng +1, đoán ra cả từ +điểm.',
+  commands: [
+    { usage: 'a', description: 'Đoán 1 chữ cái' },
+    { usage: 'apple', description: 'Đoán cả từ' },
+    { usage: '!guess a', description: 'Cách viết khác' }
+  ],
   defaultConfig: { seconds: 120, maxWrong: 6, points: 3, bank: VOCAB_BANK },
   settings: [
     { key: 'seconds', label: 'Thời gian (giây)', type: 'number', min: 20, max: 600 },
@@ -57,7 +63,9 @@ export const hangmanGame: GameDefinition<HangmanRound, HangmanConfig> = {
 
   handle(state, input, config) {
     if (input.kind !== 'chat' || state.solver || state.wrong.length >= config.maxWrong || solved(state)) return null;
-    const text = normalizeEnglish(input.text);
+    const raw = commandArgument(input.text, ['guess', 'ans']);
+    if (raw === null) return null;
+    const text = normalizeEnglish(raw);
 
     if (/^[a-z]$/.test(text)) {
       if (state.guessed.includes(text) || state.wrong.includes(text)) return { state, consumed: true };
@@ -68,6 +76,7 @@ export const hangmanGame: GameDefinition<HangmanRound, HangmanConfig> = {
           consumed: true,
           finish: wrong.length >= config.maxWrong,
           message: `${input.nickname}: “${text.toUpperCase()}” không có ❌`,
+          effects: [{ kind: 'wrong', text: text.toUpperCase(), user: input.nickname }],
           state: { ...state, wrong }
         };
       }
@@ -82,6 +91,7 @@ export const hangmanGame: GameDefinition<HangmanRound, HangmanConfig> = {
         consumed: true,
         finish: done,
         message: `${input.nickname}: “${text.toUpperCase()}” ✅`,
+        effects: [{ kind: 'correct', text: text.toUpperCase(), user: input.nickname }],
         state: done ? { ...next, solver: { user: input.user, nickname: input.nickname } } : next
       };
     }
@@ -122,9 +132,10 @@ export const hangmanGame: GameDefinition<HangmanRound, HangmanConfig> = {
     const finders = ranked(Object.entries(state.finders).map(([user, entry]) => ({ user, ...entry })), (entry) => entry.letters).slice(0, 3);
     return view({
       headline: maskWord(state.word, state.guessed),
+      style: { headline: 'tiles' },
       hint: `Nghĩa: ${state.meaning || '?'} • Sai ${state.wrong.length}/${config.maxWrong}${state.wrong.length ? `: ${state.wrong.join(' ').toUpperCase()}` : ''}`,
       progress: { label: 'Lượt còn lại', value: Math.max(0, config.maxWrong - state.wrong.length), max: config.maxWrong },
-      rows: finders.map((entry) => ({ label: entry.nickname, value: `${entry.letters} chữ` }))
+      rows: finders.map((entry) => ({ label: entry.nickname, avatar: entry.nickname, value: `${entry.letters} chữ` }))
     });
   }
 };

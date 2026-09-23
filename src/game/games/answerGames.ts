@@ -1,7 +1,7 @@
 import { EMOJI_BANK, SENTENCE_BANK, VOCAB_BANK } from '../content/english';
 import type { PointAward } from '../engine';
 import { aliases, isEnglishAttempt, normalizeEnglish } from '../english';
-import { chatTest, pickUnasked, shuffle, view, type GameDefinition } from '../types';
+import { chatTest, commandArgument, pickUnasked, shuffle, view, type GameDefinition } from '../types';
 
 /** One "prompt → answer" item parsed from a bank line. */
 export interface AnswerItem {
@@ -27,6 +27,9 @@ interface AnswerGameOptions {
   id: string;
   title: string;
   howTo: string;
+  aliases?: string[];
+  accent: string;
+  headlineStyle?: 'text' | 'tiles';
   bankLabel: string;
   bankHint: string;
   defaultBank: string;
@@ -88,6 +91,12 @@ export function createAnswerGame(options: AnswerGameOptions): GameDefinition<Ans
     title: options.title,
     category: 'english',
     howTo: options.howTo,
+    commands: [
+      { usage: 'đáp án tiếng Anh', description: 'Gõ thẳng đáp án' },
+      { usage: '!ans …', description: 'Cách viết khác' }
+    ],
+    aliases: options.aliases,
+    accent: options.accent,
     defaultConfig: { seconds: 30, points: 2, scoring: options.defaultScoring, bank: options.defaultBank },
     settings: [
       { key: 'seconds', label: 'Giây mỗi câu', type: 'number', min: 5, max: 300 },
@@ -116,13 +125,17 @@ export function createAnswerGame(options: AnswerGameOptions): GameDefinition<Ans
     },
 
     handle(state, input, config) {
-      if (input.kind !== 'chat' || state.revealed || !isEnglishAttempt(input.text)) return null;
-      if (state.correct[input.user] || !state.item.answers.includes(normalizeEnglish(input.text))) return { state, consumed: true };
+      if (input.kind !== 'chat' || state.revealed) return null;
+      const text = commandArgument(input.text, ['ans', 'answer']);
+      if (text === null || !isEnglishAttempt(text)) return null;
+      // Wrong or repeated answers are ignored without using up the viewer's cooldown.
+      if (state.correct[input.user] || !state.item.answers.includes(normalizeEnglish(text))) return null;
       const order = Object.keys(state.correct).length;
       return {
         consumed: true,
         finish: config.scoring === 'first',
         message: config.scoring === 'first' ? undefined : `✅ ${input.nickname} trả lời đúng!`,
+        effects: [{ kind: 'correct', text: `✅ ${input.nickname}`, user: input.nickname }],
         state: { ...state, correct: { ...state.correct, [input.user]: { nickname: input.nickname, order } } }
       };
     },
@@ -154,8 +167,9 @@ export function createAnswerGame(options: AnswerGameOptions): GameDefinition<Ans
       const winners = Object.values(state.correct).sort((a, b) => a.order - b.order).slice(0, 5);
       return view({
         headline: state.shown,
+        style: { headline: options.headlineStyle ?? 'text' },
         hint: state.revealed ? `✔ ${state.item.display}` : options.hint(state.item),
-        rows: winners.map((winner, index) => ({ badge: index === 0 ? '🥇' : '✅', label: winner.nickname }))
+        rows: winners.map((winner, index) => ({ badge: index === 0 ? '🥇' : '✅', label: winner.nickname, avatar: winner.nickname }))
       });
     }
   };
@@ -170,6 +184,9 @@ function vocabItem(parts: string[]): AnswerItem | null {
 
 export const unscrambleGame = createAnswerGame({
   id: 'unscramble',
+  accent: '#10b981',
+  headlineStyle: 'tiles',
+  aliases: ['scramble'],
   title: 'Unscramble 🔀',
   howTo: 'Màn hình hiện các chữ cái bị xáo trộn và nghĩa tiếng Việt. Viewer gõ từ tiếng Anh đúng.',
   bankLabel: 'Từ vựng',
@@ -183,6 +200,9 @@ export const unscrambleGame = createAnswerGame({
 
 export const translateGame = createAnswerGame({
   id: 'translate',
+  accent: '#14b8a6',
+  headlineStyle: 'text',
+  aliases: ['dich'],
   title: 'Dịch nhanh 🇻🇳→🇬🇧',
   howTo: 'Màn hình hiện từ tiếng Việt. Viewer gõ nghĩa tiếng Anh (chấp nhận các từ đồng nghĩa trong ngân hàng).',
   bankLabel: 'Từ vựng',
@@ -196,6 +216,9 @@ export const translateGame = createAnswerGame({
 
 export const emojiGame = createAnswerGame({
   id: 'emojiGuess',
+  accent: '#f97316',
+  headlineStyle: 'text',
+  aliases: ['emoji'],
   title: 'Emoji Guess 🤔',
   howTo: 'Ghép các emoji thành một từ tiếng Anh (vd 🧈🪰 = butterfly).',
   bankLabel: 'Câu đố emoji',
@@ -214,6 +237,9 @@ export const emojiGame = createAnswerGame({
 
 export const sentenceGame = createAnswerGame({
   id: 'sentenceBuilder',
+  accent: '#6366f1',
+  headlineStyle: 'text',
+  aliases: ['sentence'],
   title: 'Sentence Builder 🧩',
   howTo: 'Các từ của một câu bị xáo trộn. Viewer gõ lại câu đúng thứ tự (không cần dấu câu, không phân biệt hoa thường).',
   bankLabel: 'Câu mẫu',

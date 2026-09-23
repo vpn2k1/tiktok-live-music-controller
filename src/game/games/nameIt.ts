@@ -1,7 +1,7 @@
 import { CATEGORY_BANK } from '../content/english';
 import type { PointAward } from '../engine';
 import { aliases, isEnglishAttempt, matchesAlias, normalizeEnglish } from '../english';
-import { chatTest, pickUnasked, view, type GameDefinition } from '../types';
+import { chatTest, commandArgument, pickUnasked, view, type GameDefinition } from '../types';
 
 export interface NameItCategory {
   name: string;
@@ -35,7 +35,13 @@ export const nameItGame: GameDefinition<NameItRound, NameItConfig> = {
   id: 'nameIt',
   title: 'Name It! 📋',
   category: 'english',
+  accent: '#0ea5e9',
   howTo: 'Màn hình hiện chủ đề và các ô đáp án ẩn. Viewer comment từ tiếng Anh thuộc chủ đề để lật ô (số nhiều cũng được). Mỗi ô lật được +1.',
+  commands: [
+    { usage: 'apple', description: 'Gõ một từ thuộc chủ đề' },
+    { usage: '!ans apple', description: 'Cách viết khác' }
+  ],
+  aliases: ['nameit'],
   defaultConfig: { seconds: 120, bank: CATEGORY_BANK },
   settings: [
     { key: 'seconds', label: 'Thời gian (giây)', type: 'number', min: 20, max: 600 },
@@ -53,16 +59,20 @@ export const nameItGame: GameDefinition<NameItRound, NameItConfig> = {
   },
 
   handle(state, input) {
-    if (input.kind !== 'chat' || state.revealed || !isEnglishAttempt(input.text)) return null;
-    const text = normalizeEnglish(input.text);
+    if (input.kind !== 'chat' || state.revealed) return null;
+    const raw = commandArgument(input.text, ['ans', 'answer']);
+    if (raw === null || !isEnglishAttempt(raw)) return null;
+    const text = normalizeEnglish(raw);
     const slot = state.category.slots.findIndex((candidate) => matchesAlias(text, candidate.aliases, true));
-    if (slot < 0 || state.found[slot]) return { state, consumed: true };
+    // Misses and already-found answers are ignored without using up the cooldown.
+    if (slot < 0 || state.found[slot]) return null;
 
     const found = { ...state.found, [slot]: { user: input.user, nickname: input.nickname } };
     return {
       consumed: true,
       finish: Object.keys(found).length === state.category.slots.length,
       message: `${input.nickname} tìm ra “${state.category.slots[slot]?.label}”`,
+      effects: [{ kind: 'correct', text: state.category.slots[slot]?.label, user: input.nickname }],
       state: { ...state, found }
     };
   },
@@ -101,6 +111,7 @@ export const nameItGame: GameDefinition<NameItRound, NameItConfig> = {
           badge: String(index + 1),
           label: finder || state.revealed ? slot.label : mask(slot.label),
           value: finder?.nickname,
+          avatar: finder?.nickname,
           highlight: Boolean(finder)
         };
       })

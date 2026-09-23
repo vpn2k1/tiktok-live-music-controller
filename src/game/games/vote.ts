@@ -1,6 +1,6 @@
 import type { AudioTrack } from '../../shared/types';
 import type { PointAward } from '../engine';
-import { chatTest, percentOf, shuffle, view, type GameDefinition } from '../types';
+import { chatTest, commandArgument, percentOf, shuffle, view, type GameDefinition } from '../types';
 
 export interface VoteOption {
   /** Track id, not index: the playlist can change while a vote is running. */
@@ -73,7 +73,12 @@ export const voteGame: GameDefinition<VoteRound, VoteConfig> = {
   id: 'vote',
   title: 'Vote bài tiếp theo',
   category: 'fun',
+  accent: '#8b5cf6',
   howTo: 'Viewer comment 1/2/3 để chọn bài. Hết giờ bài nhiều phiếu nhất được phát. Vote +1 điểm, vote trúng +2.',
+  commands: [
+    { usage: '1 / 2 / 3', description: 'Chọn bài' },
+    { usage: '!vote 2', description: 'Cách viết khác' }
+  ],
   defaultConfig: { seconds: 30 },
   settings: [{ key: 'seconds', label: 'Thời gian (giây)', type: 'number', min: 10, max: 600 }],
 
@@ -84,9 +89,11 @@ export const voteGame: GameDefinition<VoteRound, VoteConfig> = {
   },
 
   handle(state, input) {
-    if (input.kind !== 'chat' || !/^\d+$/.test(input.text.trim())) return null;
+    if (input.kind !== 'chat') return null;
+    const text = commandArgument(input.text, ['vote']);
+    if (text === null || !/^\d+$/.test(text)) return null;
     // While voting, every digit-only comment is treated as a ballot attempt.
-    const choice = parseVote(state, input.text);
+    const choice = parseVote(state, text);
     if (choice === null || state.ballots[input.user]?.choice === choice) return { state, consumed: true };
     return {
       state: { ...state, ballots: { ...state.ballots, [input.user]: { nickname: input.nickname, choice } } },
@@ -116,6 +123,7 @@ export const voteGame: GameDefinition<VoteRound, VoteConfig> = {
     const counts = tallyVotes(state);
     const total = counts.reduce((sum, count) => sum + count, 0);
     return view({
+      style: { rows: 'quiz' },
       hint: `Comment 1–${state.options.length} để chọn bài`,
       rows: state.options.map((option, index) => ({
         badge: String(index + 1),

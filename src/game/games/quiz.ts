@@ -61,12 +61,15 @@ export function parseQuestions(text: string): QuizQuestion[] {
 }
 
 /** Quiz engine shared by the general-knowledge quiz and the English quiz. */
-export function createQuizGame(options: { id: string; title: string; category: GameCategory; defaultQuestions: string }): GameDefinition<QuizRound, QuizConfig> {
+export function createQuizGame(options: { id: string; title: string; category: GameCategory; defaultQuestions: string; aliases?: string[]; accent?: string }): GameDefinition<QuizRound, QuizConfig> {
   return {
     id: options.id,
     title: options.title,
     category: options.category,
     howTo: 'Comment A, B, C hoặc D. Chỉ tính câu trả lời đầu tiên. Hết giờ công bố đáp án: đúng +điểm, người đúng nhanh nhất +1.',
+    commands: [{ usage: 'A / B / C / D', description: 'Chọn đáp án (không đổi được)' }],
+    aliases: options.aliases,
+    accent: options.accent,
     defaultConfig: { seconds: 20, points: 2, questions: options.defaultQuestions },
     settings: [
       { key: 'seconds', label: 'Giây mỗi câu', type: 'number', min: 5, max: 120 },
@@ -139,6 +142,7 @@ export function createQuizGame(options: { id: string; title: string; category: G
       for (const response of Object.values(state.responses)) counts[response.choice] = (counts[response.choice] ?? 0) + 1;
       const total = Object.keys(state.responses).length;
       return view({
+        style: { rows: 'quiz' },
         headline: state.question.question,
         hint: state.revealed ? null : `Comment ${LETTERS.slice(0, state.question.answers.length).join('/')} • ${total} người đã trả lời`,
         rows: state.question.answers.map((answer, index) => ({
@@ -154,6 +158,6 @@ export function createQuizGame(options: { id: string; title: string; category: G
   };
 }
 
-export const quizGame = createQuizGame({ id: 'quiz', title: 'Quiz A/B/C/D ❓', category: 'fun', defaultQuestions: DEFAULT_QUESTIONS });
+export const quizGame = createQuizGame({ id: 'quiz', title: 'Quiz A/B/C/D ❓', category: 'fun', defaultQuestions: DEFAULT_QUESTIONS, accent: '#f59e0b' });
 
-export const englishQuizGame = createQuizGame({ id: 'englishQuiz', title: 'English Quiz 📝', category: 'english', defaultQuestions: ENGLISH_QUIZ_BANK });
+export const englishQuizGame = createQuizGame({ id: 'englishQuiz', title: 'English Quiz 📝', category: 'english', defaultQuestions: ENGLISH_QUIZ_BANK, aliases: ['equiz'], accent: '#0ea5e9' });

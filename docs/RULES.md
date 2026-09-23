@@ -68,10 +68,46 @@ For English-teaching channels. Answers are compared after `normalizeEnglish` (lo
 - Name It!: +1 per revealed slot; the round ends early when all slots are found.
 - Word Chain (EN): `letters` mode accepts plausible words (letters only, has a vowel, no triple letters); `dictionary` mode needs the word in the built-in list or an imported `.txt` word list.
 
+## Chat commands
+
+Global commands (whitelist in `src/game/chatCommands.ts`, toggle "Lệnh chat" in the app). All share the per-viewer cooldown.
+
+| Command | Who | Effect |
+|---|---|---|
+| `!help` (`!huongdan`) | everyone | overlay shows the running game's commands |
+| `!rank` (`!diem`) | everyone | overlay shows the viewer's points and rank |
+| `!start` | streamer/mod | start the selected game |
+| `!start <name>` | streamer/mod | select and start a game by id/alias (`quiz`, `hangman`, `doanso`, `team`…); accents/case ignored |
+| `!stop` (`!chot`) | streamer/mod | finish the round now |
+| `!cancel` (`!huy`) | streamer/mod | discard the round |
+| `!games` | streamer/mod | overlay lists game names for `!start` |
+
+Streamer/mod = the connected TikTok account, a username in the moderator list, or an event from the app's own test tools (main marks those `simulated: true`; real TikTok events never carry it). A non-fatal connector error keeps the status "connected", so it can't open host commands to viewers.
+
+Only accepted answers count as commands for the cooldown: wrong answers and ordinary chat during a round are ignored, so they never block a viewer's next real answer.
+
+Game commands (only while that game runs): `!vote 2`, `!hit` (boss, `chatDamage`), `!guess 42` (guess number / hangman), `!join`, `!join a|b`, `!a`, `!b` (team battle; bare `!join` picks the smaller team), `!join`, `!run` (race, `chatStep`), `!spin` (wheel, streamer/mod only), `!ans …` (English answer games / Name It). Plain forms (`2`, `A`, `apple`) keep working.
+
 ## Background features (Tính năng nền)
 
 - **Bảng xếp hạng fan** (off by default): comment +`fanChatPoints` at most once per `fanChatCooldownSeconds`; every `fanLikesPerPoint` likes = +1 (remainder carried); each gift unit +`fanGiftPoints`.
 - **Chào người mới** (on by default, follows only): overlay toast + short synthesized chime for follows; optional joins. Queue max 5; joins are dropped first so big rooms don't flood the overlay.
+
+## Tự động chuyển game (auto host)
+
+Panel "⏱ Tự động chuyển game" in the Game tab (`src/game/autoplay.ts` pure logic, `src/game/useAutoPlay.ts` timers). Settings persist in `localStorage` (`autoplay-settings`).
+
+- **Thời lượng LIVE** (`liveMinutes`, 0–720, 0 = no limit): counted from "▶ Bật tự động" (or from connecting, if "Tự bật khi kết nối TikTok" is on). 5 minutes before the end the overlay announces it; at the end the running round is finished and autoplay stops. The app never ends the TikTok LIVE itself. While running, the typed value applies from the next start; use "+15 phút LIVE" to extend.
+- **Mỗi game** (`switchMinutes`, 1–180): when a game's time is up its round is finished (points awarded, result shown), and after the round gap the next game in the rotation starts.
+- **Nghỉ giữa vòng** (`roundGapSeconds`, 3–300): inside a game's time, a finished round is replayed after this pause.
+- **Thứ tự / Game trong vòng xoay**: sequential (library order) or random; all games by default. A game that can't start (e.g. vote without music) is skipped; if none can start, autoplay stops.
+- A game the host starts manually becomes the current game; Chốt/Huỷ just leads to the next round after the gap.
+
+### Gift → switch game
+
+- Exact gift name (case-insensitive, default `Rose`) summed across viewers until `giftCount` (default 5), then the game switches to the next one in the rotation. Works with or without autoplay (without it, the next game starts right away; with it, the result shows for the round gap first).
+- After a switch, matching gifts are ignored for `giftCooldownSeconds` (default 30) so the new game gets played.
+- The running game still sees the gift first (e.g. boss damage, fan points). The overlay shows a "🎁 Tặng N <gift> · đổi game" chip while it's on. The reward is only a game change, never a prize.
 
 ## Rule security
 Never change these rules so arbitrary comment text becomes code, a shell command, a filesystem path, or a network URL.

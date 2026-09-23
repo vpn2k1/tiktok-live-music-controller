@@ -28,6 +28,8 @@ Electron custom protocol → local file
 LiveEvent → useLiveGames.handleEvent → running GameDefinition.handle (pure)
           → cooldown check (chat commands) → state update → overlay view
 timer / tick → GameDefinition.finish → points + optional track change
+useAutoPlay (1 s loop) → finish / start next game on the LIVE + per-game timers
+gift LiveEvent → useAutoPlay.handleEvent → switch game (after the running game saw it)
 ```
 
 Game modules never touch React, the filesystem or the network; they receive a context (`now`, `random`, dictionary, playlist) and return new state.

@@ -124,16 +124,21 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse, opti
   sendText(res, 404, 'Not found');
 }
 
-export function startOverlayServer(options: OverlayServerOptions): Promise<OverlayInfo> {
+const RETRY_MS = 3000;
+let retryTimer: NodeJS.Timeout | null = null;
+let stopped = false;
+
+function listenOnce(options: OverlayServerOptions, quiet = false): Promise<OverlayInfo & { retry: boolean }> {
   return new Promise((resolve) => {
     const instance = http.createServer((req, res) => handleRequest(req, res, options));
 
     instance.once('error', (error: NodeJS.ErrnoException) => {
-      const message = error.code === 'EADDRINUSE'
-        ? `Cổng ${OVERLAY_PORT} đang bị chương trình khác dùng. Đóng chương trình đó rồi mở lại app.`
+      const busy = error.code === 'EADDRINUSE';
+      const message = busy
+        ? `Cổng ${OVERLAY_PORT} đang bị chương trình khác dùng (có thể là một cửa sổ app khác). App sẽ tự thử lại khi cổng trống.`
         : `Không mở được overlay server: ${error.message}`;
-      console.error('[overlay]', message);
-      resolve({ url: null, error: message });
+      if (!quiet) console.error('[overlay]', message);
+      resolve({ url: null, error: message, retry: busy });
     });
 
     instance.listen(OVERLAY_PORT, HOST, () => {
@@ -141,21 +146,49 @@ export function startOverlayServer(options: OverlayServerOptions): Promise<Overl
       heartbeat = setInterval(() => {
         for (const client of clients) client.write(': ping\n\n');
       }, HEARTBEAT_MS);
-      resolve({ url: `http://${HOST}:${OVERLAY_PORT}/overlay` });
+      resolve({ url: `http://${HOST}:${OVERLAY_PORT}/overlay`, retry: false });
     });
   });
+}
+
+/**
+ * Starts the overlay server. If the port is busy it keeps retrying in the
+ * background and reports the new state through `onChange`, so closing the
+ * other program is enough — no app restart needed.
+ */
+export async function startOverlayServer(options: OverlayServerOptions, onChange: (info: OverlayInfo) => void): Promise<OverlayInfo> {
+  stopped = false;
+  const first = await listenOnce(options);
+  if (first.retry) {
+    const retry = async (): Promise<void> => {
+      retryTimer = null;
+      if (stopped) return;
+      const next = await listenOnce(options, true);
+      if (next.retry) {
+        retryTimer = setTimeout(() => void retry(), RETRY_MS);
+      } else {
+        console.log('[overlay]', next.url ?? next.error);
+        onChange({ url: next.url, error: next.error });
+      }
+    };
+    retryTimer = setTimeout(() => void retry(), RETRY_MS);
+  }
+  return { url: first.url, error: first.error };
 }
 
 export function publishOverlay(state: unknown): void {
   if (!state || typeof state !== 'object') return;
   const payload = JSON.stringify(state as OverlayState);
-  if (payload.length > MAX_STATE_BYTES) return;
+  if (Buffer.byteLength(payload) > MAX_STATE_BYTES) return;
 
   latestPayload = payload;
   for (const client of clients) client.write(`data: ${payload}\n\n`);
 }
 
 export function stopOverlayServer(): void {
+  stopped = true;
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
   if (heartbeat) clearInterval(heartbeat);
   heartbeat = null;
   for (const client of clients) client.end();

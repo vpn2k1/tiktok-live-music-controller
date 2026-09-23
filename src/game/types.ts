@@ -1,11 +1,12 @@
 import type { AudioTrack, OverlayGameView } from '../shared/types';
-import type { PointAward } from './engine';
+import type { EffectInput, PointAward } from './engine';
 import type { EnglishDictionary } from './english';
 import type { WordDictionary } from './words';
 
 /** Normalized viewer input a game can react to. Text is untrusted data. */
 export type GameInput =
-  | { kind: 'chat'; user: string; nickname: string; text: string }
+  /** `isHost`: the streamer or a configured moderator (for host-only game commands). */
+  | { kind: 'chat'; user: string; nickname: string; text: string; isHost?: boolean }
   | { kind: 'like'; user: string; nickname: string; count: number }
   | { kind: 'gift'; user: string; nickname: string; giftName: string; count: number };
 
@@ -15,6 +16,11 @@ export const GAME_CATEGORY_LABELS: Record<GameCategory, string> = {
   fun: 'Giải trí',
   english: 'Tiếng Anh 🇬🇧'
 };
+
+export interface GameCommand {
+  usage: string;
+  description: string;
+}
 
 export type GameConfigValue = number | string;
 export type GameConfig = Record<string, GameConfigValue>;
@@ -64,6 +70,8 @@ export interface HandleResult<S> {
   finish?: boolean;
   /** Move the round deadline (e.g. word chain resets the turn timer). */
   endsAt?: number;
+  /** One-shot overlay effects / sounds (e.g. a hit number, a correct answer). */
+  effects?: EffectInput[];
 }
 
 /** Simulated viewer input for the app's test buttons and demo bot. */
@@ -85,6 +93,8 @@ export interface FinishResult<S> {
   awards: PointAward[];
   /** Optional music effect, e.g. play the voted track. */
   playTrackId?: string;
+  /** Result effect; default: `win` when someone scored, else `lose`. */
+  effects?: EffectInput[];
 }
 
 /**
@@ -94,9 +104,15 @@ export interface FinishResult<S> {
 export interface GameDefinition<S, C extends GameConfig> {
   id: string;
   title: string;
-  /** Dropdown group in the Game panel. */
+  /** Group in the game library. */
   category: GameCategory;
   howTo: string;
+  /** Chat commands shown on the game card and by `!help`. */
+  commands: GameCommand[];
+  /** Extra names for `!start <name>` (the lowercase id always works). */
+  aliases?: string[];
+  /** Accent color for the overlay card (defaults by category). */
+  accent?: string;
   defaultConfig: C;
   settings: SettingField[];
   start(config: C, ctx: StartContext<S>): StartResult<S> | { error: string };
@@ -133,6 +149,18 @@ export function view(partial: Partial<OverlayGameView>): OverlayGameView {
 
 export function percentOf(value: number, total: number): number {
   return total > 0 ? Math.round(Math.min(100, Math.max(0, (value / total) * 100))) : 0;
+}
+
+/**
+ * If `text` is one of the `!command arg` forms (case-insensitive), returns the
+ * argument; returns the text unchanged when it has no command prefix, and null
+ * when it is some other `!command`.
+ */
+export function commandArgument(text: string, names: string[]): string | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('!')) return trimmed;
+  const [head = '', ...rest] = trimmed.split(/\s+/);
+  return names.includes(head.slice(1).toLowerCase()) ? rest.join(' ') : null;
 }
 
 export function shuffle<T>(items: T[], random: () => number): T[] {

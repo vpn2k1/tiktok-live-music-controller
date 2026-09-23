@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, type OpenDialogOptions } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,6 +16,7 @@ import type {
   TikTokStatus
 } from '../src/shared/types';
 import { publishOverlay, startOverlayServer, stopOverlayServer } from './overlay-server';
+import { closeOverlayWindow, openOverlayWindow } from './overlay-window';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,7 +77,16 @@ function usernameOf(rawData: unknown): string {
   return stringValue(user.uniqueId || data.uniqueId || user.nickname || 'unknown');
 }
 
-function normalizeEvent(type: string, rawData: unknown = {}): LiveEvent {
+/** Readable text for connector errors (often `{ info, exception }`, not an Error). */
+function errorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  const record = asRecord(error);
+  const exception = record.exception instanceof Error ? record.exception.message : stringValue(record.exception);
+  const text = [stringValue(record.info), exception].filter(Boolean).join(': ');
+  return text || String(error);
+}
+
+function normalizeEvent(type: string, rawData: unknown = {}, simulated = false): LiveEvent {
   const data = asRecord(rawData);
   const user = nestedRecord(data, 'user');
   const gift = nestedRecord(data, 'gift');
@@ -87,7 +97,8 @@ function normalizeEvent(type: string, rawData: unknown = {}): LiveEvent {
     type,
     user: usernameOf(data),
     nickname: stringValue(user.nickname || data.nickname || usernameOf(data)),
-    at: Date.now()
+    at: Date.now(),
+    ...(simulated ? { simulated: true } : {})
   };
 
   if (type === 'chat') {
@@ -127,8 +138,8 @@ function normalizeEvent(type: string, rawData: unknown = {}): LiveEvent {
   return base;
 }
 
-function emitLiveEvent(type: string, data: unknown): void {
-  send<LiveEvent>('tiktok:event', normalizeEvent(type, data));
+function emitLiveEvent(type: string, data: unknown, simulated = false): void {
+  send<LiveEvent>('tiktok:event', normalizeEvent(type, data, simulated));
 }
 
 async function disconnectTikTok(): Promise<boolean> {
@@ -160,6 +171,7 @@ async function connectTikTok(rawUsername: string) {
   liveConnection = connection;
 
   connection.on(ControlEvent.CONNECTED, (state: unknown) => {
+    if (liveConnection !== connection) return;
     const record = asRecord(state);
     emitStatus('connected', { username, roomId: stringValue(record.roomId) || null });
   });
@@ -171,10 +183,15 @@ async function connectTikTok(rawUsername: string) {
   });
 
   connection.on(ControlEvent.ERROR, (error: unknown) => {
-    emitStatus('error', {
-      username,
-      message: error instanceof Error ? error.message : String(error)
-    });
+    if (liveConnection !== connection) return;
+    // The connector also reports non-fatal errors (e.g. one undecodable message)
+    // while staying connected; keep the "connected" status so host detection and
+    // the UI don't treat the LIVE as offline.
+    if (connection.isConnected) {
+      emitStatus('connected', { username, message: `Cảnh báo từ TikTok: ${errorText(error)}` });
+      return;
+    }
+    emitStatus('error', { username, message: errorText(error) });
   });
 
   connection.on(WebcastEvent.CHAT, (data: unknown) => emitLiveEvent('chat', data));
@@ -214,13 +231,15 @@ async function connectTikTok(rawUsername: string) {
 }
 
 function createWindow(): void {
+  // Open large enough for the two-column layout at the default 120% UI zoom.
+  const area = screen.getPrimaryDisplay().workAreaSize;
   mainWindow = new BrowserWindow({
-    width: 1320,
-    height: 860,
+    width: Math.min(1720, Math.round(area.width * 0.94)),
+    height: Math.min(1100, Math.round(area.height * 0.94)),
     minWidth: 1050,
     minHeight: 700,
     backgroundColor: '#0b0d12',
-    title: 'TikTok LIVE Music Controller',
+    title: 'TikTok LIVE Game Controller',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -235,8 +254,14 @@ function createWindow(): void {
     void mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
+  // Never navigate away from the app (e.g. a file dropped onto the window) or open popups.
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // The overlay window is only useful while the controller is open.
+    closeOverlayWindow();
   });
 }
 
@@ -306,11 +331,18 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('overlay:info', () => overlayInfo);
   ipcMain.on('overlay:update', (_event, state: unknown) => publishOverlay(state));
+  ipcMain.handle('overlay:open-window', (_event, options: unknown) => {
+    if (!overlayInfo.url) return { ok: false, error: overlayInfo.error ?? 'Overlay server chưa chạy.' };
+    const origins = [new URL(overlayInfo.url).origin];
+    if (isDev && process.env.VITE_DEV_SERVER_URL) origins.push(new URL(process.env.VITE_DEV_SERVER_URL).origin);
+    return openOverlayWindow(overlayInfo.url, origins, options);
+  });
 
   ipcMain.handle('tiktok:connect', (_event, username: string) => connectTikTok(username));
   ipcMain.handle('tiktok:disconnect', () => disconnectTikTok());
 
-  ipcMain.handle('tiktok:simulate', (_event, input: SimulatedEventInput = { type: 'chat' }) => {
+  ipcMain.handle('tiktok:simulate', (_event, raw: SimulatedEventInput | null) => {
+    const input: SimulatedEventInput = raw && typeof raw === 'object' ? raw : { type: 'chat' };
     const allowed: SimulatedEventInput['type'][] = ['chat', 'gift', 'like', 'follow', 'join'];
     const type = allowed.includes(input.type) ? input.type : 'chat';
     const fake = {
@@ -324,13 +356,16 @@ app.whenReady().then(async () => {
       likeCount: Number(input.count || 1),
       totalLikeCount: Number(input.total || input.count || 1)
     };
-    emitLiveEvent(type, fake);
+    emitLiveEvent(type, fake, true);
     return true;
   });
 
   overlayInfo = await startOverlayServer({
     distDir: path.join(__dirname, '..', 'dist'),
     devServerUrl: isDev ? process.env.VITE_DEV_SERVER_URL : undefined
+  }, (info) => {
+    overlayInfo = info;
+    send<OverlayInfo>('overlay:info-changed', info);
   });
 
   createWindow();
@@ -341,6 +376,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('will-quit', () => {
+  closeOverlayWindow();
   stopOverlayServer();
 });
 

@@ -17,7 +17,10 @@ export const fastestFingerGame: GameDefinition<FastestRound, FastestConfig> = {
   id: 'fastestFinger',
   title: 'Ai nhanh tay ⚡',
   category: 'fun',
+  accent: '#eab308',
   howTo: 'Màn hình hiện một từ. Ai comment đúng từ đó (đúng dấu) đầu tiên thì thắng.',
+  commands: [{ usage: 'từ trên màn hình', description: 'Gõ đúng từ đang hiện, nhanh nhất thắng' }],
+  aliases: ['nhanhtay', 'fast'],
   defaultConfig: { seconds: 20, points: 3, words: '' },
   settings: [
     { key: 'seconds', label: 'Thời gian (giây)', type: 'number', min: 5, max: 120 },
@@ -52,8 +55,9 @@ export const fastestFingerGame: GameDefinition<FastestRound, FastestConfig> = {
   view(state) {
     return view({
       headline: state.target,
+      style: { headline: 'tiles' },
       hint: 'Gõ chính xác từ này nhanh nhất!',
-      rows: state.winner ? [{ badge: '⚡', label: state.winner.nickname, value: 'Thắng', highlight: true }] : []
+      rows: state.winner ? [{ badge: '⚡', label: state.winner.nickname, avatar: state.winner.nickname, value: 'Thắng', highlight: true }] : []
     });
   }
 };

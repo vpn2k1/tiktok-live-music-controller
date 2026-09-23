@@ -1,5 +1,5 @@
 import type { PointAward } from '../engine';
-import { giftTest, view, type GameDefinition, type GameContext } from '../types';
+import { chatTest, commandArgument, giftTest, view, type GameDefinition, type GameContext } from '../types';
 
 export interface WheelSpin {
   id: number;
@@ -66,7 +66,13 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
   id: 'wheel',
   title: 'Vòng quay thử thách 🎡',
   category: 'fun',
+  accent: '#ec4899',
   howTo: 'Mỗi gift (hoặc gift chỉ định) quay 1 lần; ô trúng là thử thách cho streamer. Chạy đến khi bấm Chốt. Người quay +1 điểm mỗi lượt.',
+  commands: [
+    { usage: 'Tặng gift', description: 'Mỗi gift quay 1 lần' },
+    { usage: '!spin', description: 'Streamer/mod quay miễn phí 1 lần' }
+  ],
+  aliases: ['vongquay', 'spin'],
   defaultConfig: { giftName: '', spinSeconds: 5, challenges: DEFAULT_CHALLENGES },
   settings: [
     { key: 'giftName', label: 'Gift để quay', type: 'text', maxLength: 40, hint: 'Để trống = gift nào cũng quay.' },
@@ -84,15 +90,23 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
   },
 
   handle(state, input, config, ctx) {
-    if (input.kind !== 'gift') return null;
-    if (config.giftName && input.giftName.trim().toLowerCase() !== config.giftName.trim().toLowerCase()) return null;
+    let requested: number;
+    if (input.kind === 'chat') {
+      if (!input.isHost || !input.text.trim().startsWith('!') || commandArgument(input.text, ['spin', 'quay']) !== '') return null;
+      requested = 1;
+    } else if (input.kind === 'gift') {
+      if (config.giftName && input.giftName.trim().toLowerCase() !== config.giftName.trim().toLowerCase()) return null;
+      requested = Math.max(1, input.count);
+    } else {
+      return null;
+    }
     const room = MAX_QUEUE - state.queue.length;
-    const spins = Math.min(room, Math.max(1, input.count));
-    if (spins <= 0) return { state, consumed: false };
+    const spins = Math.min(room, requested);
+    if (spins <= 0) return { state, consumed: input.kind === 'chat' };
 
     const queued = { ...state, queue: [...state.queue, ...Array.from({ length: spins }, () => ({ user: input.user, nickname: input.nickname }))] };
     const next = startNextSpin(queued, config, ctx);
-    return { state: next, consumed: false, message: next.spin && next.spin !== state.spin ? `🎡 ${input.nickname} đang quay…` : undefined };
+    return { state: next, consumed: input.kind === 'chat', message: next.spin && next.spin !== state.spin ? `🎡 ${input.nickname} đang quay…` : undefined };
   },
 
   tick(state, config, ctx) {
@@ -103,6 +117,7 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
       return {
         consumed: false,
         message: `🎯 ${spin.nickname}: ${challenge}`,
+        effects: [{ kind: 'win', text: challenge, user: spin.nickname }],
         state: {
           ...state,
           spin: null,
@@ -116,7 +131,19 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
     return next === state ? null : { state: next, consumed: false, message: `🎡 ${next.spin?.nickname ?? ''} đang quay…` };
   },
 
-  finish(state) {
+  finish(rawState) {
+    // A spin still in progress when the streamer ends the round still counts.
+    let state = rawState;
+    if (state.spin) {
+      const { spin } = state;
+      const old = state.spinners[spin.user];
+      state = {
+        ...state,
+        spin: null,
+        results: [...state.results, { nickname: spin.nickname, challenge: state.segments[spin.target] ?? '' }].slice(-3),
+        spinners: { ...state.spinners, [spin.user]: { nickname: spin.nickname, spins: (old?.spins ?? 0) + 1 } }
+      };
+    }
     const awards: PointAward[] = Object.entries(state.spinners).map(([user, entry]) => ({
       user,
       nickname: entry.nickname,
@@ -126,7 +153,7 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
   },
 
   testActions(_state, config) {
-    return [giftTest(config.giftName || 'Rose', 1), giftTest(config.giftName || 'Rose', 3, 0.2)];
+    return [giftTest(config.giftName || 'Rose', 1), giftTest(config.giftName || 'Rose', 3, 0.2), chatTest('!spin (mod)', '!spin', 0.5)];
   },
 
   view(state, config) {

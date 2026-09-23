@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AudioTrack, LiveEvent, OverlayGameView } from '../shared/types';
+import type { AudioTrack, LiveEvent, OverlayGameView, OverlayHowTo } from '../shared/types';
 import {
   addPoints,
   clearRound,
   CommandRateLimiter,
   createGameState,
   endRound,
+  pushEffects,
   resetScores,
   startRound,
   type GameState,
   type PointAward
 } from './engine';
+import { gameNames, HOST_ONLY, parseGlobalCommand, parseModerators } from './chatCommands';
 import { buildEnglishDictionary, parseEnglishDictionary } from './english';
 import { DEFAULT_FEATURES, likePoints, normalizeFeatures, type LiveFeatures } from './features';
 import { GAMES, getGame, normalizeConfig } from './registry';
@@ -25,14 +27,20 @@ interface LiveGamesOptions {
   playlist: AudioTrack[];
   currentTrackId: string | null;
   cooldownSeconds: number;
+  /** Connected streamer's username (null when not connected). */
+  hostUsername: string | null;
   onPlayTrack: (trackId: string, reason: string) => void;
   onAction: (message: string) => void;
+  /** Short reply shown on the overlay (e.g. for !rank / !help). */
+  onNotify: (message: string) => void;
 }
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    // Guard against stored "null" or a value of the wrong shape.
+    return parsed !== null && typeof parsed === typeof fallback ? (parsed as T) : fallback;
   } catch {
     return fallback;
   }
@@ -56,6 +64,17 @@ function loadWords(language: DictionaryLanguage): string[] {
   } catch {
     return [];
   }
+}
+
+const CATEGORY_ACCENTS: Record<string, string> = { fun: '#7867ff', english: '#10b981' };
+
+/** Icon chips telling viewers how to join, built from the game's command list. */
+function howToChips(commands: { usage: string; description: string }[]): OverlayHowTo[] {
+  return commands.slice(0, 3).map((command) => {
+    const text = command.usage;
+    const icon = /tim|like/i.test(text) ? '❤️' : /gift|tặng/i.test(text) ? '🎁' : '💬';
+    return { icon, text: `${text} · ${command.description}` };
+  });
 }
 
 function toGameInput(event: LiveEvent): GameInput | null {
@@ -136,7 +155,11 @@ export function useLiveGames(options: LiveGamesOptions) {
     if (current.phase !== 'running' || !definition) return;
 
     const result = definition.finish(current.data, configFor(definition.id), context());
-    updateGame((old) => addPoints(endRound(old, result.message, result.state), result.awards));
+    const best = [...result.awards].sort((a, b) => b.points - a.points)[0];
+    const effects = result.effects ?? [best
+      ? { kind: 'win' as const, text: result.message, user: best.nickname }
+      : { kind: 'lose' as const, text: result.message }];
+    updateGame((old) => pushEffects(addPoints(endRound(old, result.message, result.state), result.awards), effects));
     if (result.playTrackId) {
       optionsRef.current.onPlayTrack(result.playTrackId, `Kết quả ${definition.title}`);
     } else {
@@ -147,15 +170,32 @@ export function useLiveGames(options: LiveGamesOptions) {
   const applyResult = useCallback((kind: string, result: HandleResult<unknown>) => {
     updateGame((old) => (
       old.phase === 'running' && old.kind === kind
-        ? { ...old, data: result.state, message: result.message ?? old.message, endsAt: result.endsAt ?? old.endsAt }
+        ? pushEffects({
+          ...old,
+          data: result.state,
+          message: result.message ?? old.message,
+          endsAt: result.endsAt ?? old.endsAt,
+          timerStartedAt: result.endsAt != null ? Date.now() : old.timerStartedAt
+        }, result.effects)
         : old
     ));
     if (result.finish) finish();
   }, [finish, updateGame]);
 
-  const start = useCallback(() => {
-    const definition = getGame(selectedId);
-    if (!definition || gameRef.current.phase === 'running') return;
+  const selectedIdRef = useRef(selectedId);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  /** Starts `id` (default: the selected game). Returns false when it couldn't start. */
+  const start = useCallback((id?: string): boolean => {
+    const definition = getGame(id ?? selectedIdRef.current);
+    if (!definition) return false;
+    if (gameRef.current.phase === 'running') {
+      optionsRef.current.onAction('Đang có game chạy, hãy Chốt hoặc Huỷ trước.');
+      return false;
+    }
+
 
     const { playlist, currentTrackId } = optionsRef.current;
     const result = definition.start(configFor(definition.id), {
@@ -166,17 +206,22 @@ export function useLiveGames(options: LiveGamesOptions) {
     });
     if ('error' in result) {
       optionsRef.current.onAction(result.error);
-      return;
+      return false;
     }
-    updateGame((old) => startRound(old, {
+    if (id) {
+      selectedIdRef.current = id;
+      setSelectedId(id);
+    }
+    updateGame((old) => pushEffects(startRound(old, {
       kind: definition.id,
       title: definition.title,
       durationMs: result.durationMs,
       message: result.message,
       data: result.state
-    }, Date.now()));
+    }, Date.now()), [{ kind: 'start', text: definition.title }]));
     optionsRef.current.onAction(`Bắt đầu: ${definition.title}`);
-  }, [configFor, context, selectedId, updateGame]);
+    return true;
+  }, [configFor, context, updateGame]);
 
   const cancel = useCallback(() => {
     updateGame(clearRound);
@@ -210,11 +255,63 @@ export function useLiveGames(options: LiveGamesOptions) {
     }
   }, [updateGame]);
 
-  /** Routes a LIVE event to fan points and the running game. */
+  /** Streamer, moderator, or the app's own test tools (simulated events). */
+  const isHost = useCallback((user: string, simulated: boolean): boolean => {
+    if (simulated) return true;
+    const { hostUsername } = optionsRef.current;
+    const name = user.toLowerCase();
+    return name === hostUsername?.toLowerCase() || parseModerators(featuresRef.current.moderators).has(name);
+  }, []);
+
+  /** Runs a global chat command; returns true when the comment was one. */
+  const runGlobalCommand = useCallback((input: Extract<GameInput, { kind: 'chat' }>): boolean => {
+    if (!featuresRef.current.chatCommandsEnabled) return false;
+    const command = parseGlobalCommand(input.text, GAMES);
+    if (!command) return false;
+    if (HOST_ONLY.has(command.kind) && !input.isHost) return true;
+    if (!acceptCommand(input.user)) return true;
+
+    const { onNotify } = optionsRef.current;
+    const current = gameRef.current;
+    const running = current.phase === 'running' ? getGame(current.kind) : null;
+    switch (command.kind) {
+      case 'help':
+        onNotify(running
+          ? `${running.title}: ${running.commands.map((item) => `${item.usage} = ${item.description}`).join(' • ')}`
+          : 'Chưa có game. Lệnh: !help, !rank');
+        break;
+      case 'rank': {
+        const ranking = Object.values(current.scores).sort((a, b) => b.points - a.points);
+        const index = ranking.findIndex((entry) => entry.user === input.user);
+        onNotify(index >= 0
+          ? `${input.nickname}: ${ranking[index]?.points} điểm, hạng #${index + 1}`
+          : `${input.nickname}: chưa có điểm, chơi game để lên bảng nhé!`);
+        break;
+      }
+      case 'games':
+        onNotify(`!start + ${GAMES.map((game) => gameNames(game)[0]).join(', ')}`);
+        break;
+      case 'start':
+        if (command.unknown) onNotify(`Không có game “${command.unknown}”. Gõ !games để xem tên.`);
+        else start(command.game?.id);
+        break;
+      case 'stop':
+        finish();
+        break;
+      case 'cancel':
+        if (current.phase !== 'idle') cancel();
+        break;
+    }
+    return true;
+  }, [acceptCommand, cancel, finish, start]);
+
+  /** Routes a LIVE event to chat commands, fan points and the running game. */
   const handleEvent = useCallback((event: LiveEvent): { consumed: boolean } => {
-    const input = toGameInput(event);
-    if (!input) return { consumed: false };
+    const raw = toGameInput(event);
+    if (!raw) return { consumed: false };
+    const input: GameInput = raw.kind === 'chat' ? { ...raw, isHost: isHost(raw.user, event.simulated === true) } : raw;
     awardFanPoints(input);
+    if (input.kind === 'chat' && runGlobalCommand(input)) return { consumed: true };
 
     const current = gameRef.current;
     const definition = getGame(current.kind);
@@ -228,12 +325,16 @@ export function useLiveGames(options: LiveGamesOptions) {
     if (consumed && !acceptCommand(input.user)) return { consumed: true };
     applyResult(definition.id, result);
     return { consumed };
-  }, [acceptCommand, applyResult, awardFanPoints, configFor, context]);
+  }, [acceptCommand, applyResult, awardFanPoints, configFor, context, isHost, runGlobalCommand]);
 
   // Round timer.
   useEffect(() => {
     if (game.phase !== 'running' || game.endsAt == null) return undefined;
-    const timer = setTimeout(finish, Math.max(0, game.endsAt - Date.now()));
+    const timer = setTimeout(() => {
+      // An answer may have moved the deadline after this timer was scheduled.
+      const current = gameRef.current;
+      if (current.phase === 'running' && current.endsAt != null && current.endsAt <= Date.now() + 25) finish();
+    }, Math.max(0, game.endsAt - Date.now()));
     return () => clearTimeout(timer);
   }, [finish, game.phase, game.endsAt]);
 
@@ -272,6 +373,15 @@ export function useLiveGames(options: LiveGamesOptions) {
     return definition.testActions(game.data, normalizeConfig(definition, rawConfigs[definition.id]), ctx);
   }, [dictionary, englishDictionary, game.data, game.kind, game.phase, game.startedAt, rawConfigs]);
 
+  /** Accent + "how to join" chips for the running (or selected) game. */
+  const overlayMeta = useMemo(() => {
+    const definition = getGame(game.phase === 'idle' ? selectedId : game.kind) ?? getGame(selectedId);
+    return {
+      accent: definition?.accent ?? CATEGORY_ACCENTS[definition?.category ?? 'fun'] ?? '#7867ff',
+      howTo: definition ? howToChips(definition.commands) : []
+    };
+  }, [game.kind, game.phase, selectedId]);
+
   const setConfigValue = useCallback((id: string, key: string, value: string | number) => {
     setRawConfigs((old) => ({ ...old, [id]: { ...old[id], [key]: value } }));
   }, []);
@@ -308,10 +418,15 @@ export function useLiveGames(options: LiveGamesOptions) {
     }
   }, []);
 
+  /** Latest round state, including changes not rendered yet. */
+  const getState = useCallback(() => gameRef.current, []);
+
   return {
     games: GAMES,
     game,
+    getState,
     gameView,
+    overlayMeta,
     testActions,
     selectedId,
     setSelectedId,

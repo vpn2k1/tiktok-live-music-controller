@@ -1,17 +1,41 @@
 import { useEffect, useState } from 'react';
-import { OVERLAY_CANVAS, OVERLAY_WIDGETS, overlayConfigQuery, type OverlayWidget } from '../shared/overlay';
+import {
+  clampFrame,
+  DEFAULT_OVERLAY_CONFIG,
+  FRAME_MAX,
+  FRAME_MIN,
+  FRAME_PRESETS,
+  isOverlayBackground,
+  normalizeOverlayConfig,
+  OVERLAY_WIDGETS,
+  overlayConfigQuery,
+  presetFor,
+  STAGE_POSITIONS,
+  STAGE_SIZES,
+  type FramePreset,
+  type OverlayBackground,
+  type OverlayConfig,
+  type OverlayWidget,
+  type StagePosition,
+  type StageSize
+} from '../shared/overlay';
 import type { OverlayInfo } from '../shared/types';
 import OverlayPreview from './OverlayPreview';
 import Panel from './Panel';
 
-type CanvasLayout = keyof typeof OVERLAY_CANVAS;
-
-interface OverlayBuilderConfig {
-  layout: CanvasLayout;
-  widgets: OverlayWidget[];
+interface OverlayPanelProps {
+  info: OverlayInfo;
+  onAction: (message: string) => void;
+  onOpenWindow: (config: OverlayConfig) => void;
 }
 
-const DEFAULT_CONFIG: OverlayBuilderConfig = { layout: 'portrait', widgets: OVERLAY_WIDGETS };
+const STORAGE_KEY = 'overlay-frame';
+
+const BACKGROUND_LABELS: Record<OverlayBackground, string> = {
+  green: 'Xanh (chroma key)',
+  dark: 'Nền tối',
+  transparent: 'Trong suốt'
+};
 
 const WIDGET_LABELS: Record<OverlayWidget, string> = {
   alerts: 'Chào người mới',
@@ -20,88 +44,161 @@ const WIDGET_LABELS: Record<OverlayWidget, string> = {
   music: 'Bài đang phát'
 };
 
-function loadConfig(): OverlayBuilderConfig {
+const POSITION_ARROWS: Record<StagePosition, string> = {
+  'top-left': '↖', top: '↑', 'top-right': '↗',
+  left: '←', center: '•', right: '→',
+  'bottom-left': '↙', bottom: '↓', 'bottom-right': '↘'
+};
+
+interface SavedFrame {
+  config: OverlayConfig;
+  /** Background for the standalone window; the Browser Source link is always transparent. */
+  windowBackground: OverlayBackground;
+}
+
+function loadFrame(): SavedFrame {
   try {
-    const saved = JSON.parse(localStorage.getItem('overlay-config') || '{}') as { layout?: string; widgets?: string[]; knownWidgets?: string[] };
-    const layout = saved.layout === 'landscape' || saved.layout === 'portrait' ? saved.layout : DEFAULT_CONFIG.layout;
-    const widgets = Array.isArray(saved.widgets)
-      // Widgets added after the config was saved start enabled.
-      ? OVERLAY_WIDGETS.filter((widget) => saved.widgets?.includes(widget) || !saved.knownWidgets?.includes(widget))
-      : DEFAULT_CONFIG.widgets;
-    return { layout, widgets };
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') as { config?: Record<string, unknown>; windowBackground?: unknown };
+    return {
+      config: normalizeOverlayConfig({ ...DEFAULT_OVERLAY_CONFIG, ...(saved.config ?? {}), mode: 'canvas', background: 'transparent' }),
+      windowBackground: isOverlayBackground(saved.windowBackground) ? saved.windowBackground : 'green'
+    };
   } catch {
-    return DEFAULT_CONFIG;
+    return { config: DEFAULT_OVERLAY_CONFIG, windowBackground: 'green' };
   }
 }
 
-interface OverlayPanelProps {
-  info: OverlayInfo;
-  onAction: (message: string) => void;
-}
-
-export default function OverlayPanel({ info, onAction }: OverlayPanelProps) {
-  const [config, setConfig] = useState<OverlayBuilderConfig>(loadConfig);
-  const canvas = OVERLAY_CANVAS[config.layout];
+export default function OverlayPanel({ info, onAction, onOpenWindow }: OverlayPanelProps) {
+  const [{ config, windowBackground }, setFrame] = useState<SavedFrame>(loadFrame);
+  const [customPicked, setCustomPicked] = useState(false);
+  const preset: FramePreset = customPicked ? 'custom' : presetFor(config.width, config.height);
+  const portrait = config.height > config.width;
   const link = info.url ? `${info.url}${overlayConfigQuery(config)}` : null;
 
   useEffect(() => {
     try {
-      localStorage.setItem('overlay-config', JSON.stringify({ ...config, knownWidgets: OVERLAY_WIDGETS }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ config, windowBackground }));
     } catch {
       // Storage unavailable: the choice still works for this session.
     }
-  }, [config]);
+  }, [config, windowBackground]);
+
+  function update(patch: Partial<OverlayConfig>): void {
+    setFrame((old) => ({ ...old, config: normalizeOverlayConfig({ ...old.config, ...patch }) }));
+  }
+
+  function pickPreset(key: FramePreset): void {
+    if (key === 'custom') {
+      setCustomPicked(true);
+      return;
+    }
+    setCustomPicked(false);
+    const frame = FRAME_PRESETS[key];
+    // Portrait frames default to avoiding TikTok's UI; others don't need it.
+    update({ width: frame.width, height: frame.height, safeArea: frame.height > frame.width });
+  }
 
   function toggleWidget(widget: OverlayWidget, enabled: boolean): void {
-    setConfig((old) => ({
-      ...old,
-      widgets: OVERLAY_WIDGETS.filter((item) => (item === widget ? enabled : old.widgets.includes(item)))
-    }));
+    update({ widgets: OVERLAY_WIDGETS.filter((item) => (item === widget ? enabled : config.widgets.includes(item))) });
   }
 
   function copyLink(): void {
     if (!link) return;
     navigator.clipboard.writeText(link)
-      .then(() => onAction('Đã copy link overlay'))
+      .then(() => onAction(`Đã copy link. OBS → Browser Source → dán link, ${config.width}×${config.height}`))
       .catch((error: unknown) => onAction(`Không copy được: ${error instanceof Error ? error.message : String(error)}`));
   }
 
+  if (!link) {
+    return (
+      <Panel title="④ Đưa lên OBS">
+        <p className="error-text">{info.error || 'Đang mở overlay server…'}</p>
+      </Panel>
+    );
+  }
+
   return (
-    <Panel title="Overlay OBS" aside={`${canvas.width}×${canvas.height}`}>
+    <Panel title="④ Đưa lên OBS" aside={`${config.width}×${config.height}`}>
       <div className="game-stack">
-        <div className="game-block">
-          <div className="segmented" role="group" aria-label="Khung hình">
-            {(['portrait', 'landscape'] as CanvasLayout[]).map((layout) => (
-              <button key={layout} className={config.layout === layout ? 'active' : ''} onClick={() => setConfig((old) => ({ ...old, layout }))}>
-                {layout === 'portrait' ? '9:16 TikTok dọc' : '16:9 ngang'}
+        <div className="frame-presets" role="group" aria-label="Khung video">
+          {[...(Object.keys(FRAME_PRESETS) as (keyof typeof FRAME_PRESETS)[]), 'custom' as const].map((key) => (
+            <button key={key} className={preset === key ? 'active' : ''} onClick={() => pickPreset(key)}>
+              {key === 'custom' ? 'Tuỳ chỉnh' : FRAME_PRESETS[key].label}
+            </button>
+          ))}
+        </div>
+        {preset === 'custom' ? (
+          <div className="frame-custom">
+            <label>
+              Rộng
+              <input type="number" min={FRAME_MIN} max={FRAME_MAX} defaultValue={config.width} onBlur={(event) => update({ width: clampFrame(event.target.value, config.width) })} />
+            </label>
+            <span>×</span>
+            <label>
+              Cao
+              <input type="number" min={FRAME_MIN} max={FRAME_MAX} defaultValue={config.height} onBlur={(event) => update({ height: clampFrame(event.target.value, config.height) })} />
+            </label>
+            <span className="field-hint">px ({FRAME_MIN}–{FRAME_MAX})</span>
+          </div>
+        ) : null}
+
+        <div className="stage-controls">
+          <div className="position-grid" role="group" aria-label="Vị trí game trong khung">
+            {STAGE_POSITIONS.map((position) => (
+              <button key={position} className={config.position === position ? 'active' : ''} onClick={() => update({ position })} title={position}>
+                {POSITION_ARROWS[position]}
               </button>
             ))}
           </div>
-          <div className="check-row">
-            {OVERLAY_WIDGETS.map((widget) => (
-              <label key={widget} className="check-chip">
-                <input type="checkbox" checked={config.widgets.includes(widget)} onChange={(event) => toggleWidget(widget, event.target.checked)} />
-                {WIDGET_LABELS[widget]}
+          <div className="stage-size">
+            <span className="fold-label">Cỡ game</span>
+            <div className="segmented four" role="group" aria-label="Cỡ game">
+              {(Object.keys(STAGE_SIZES) as StageSize[]).map((size) => (
+                <button key={size} className={config.size === size ? 'active' : ''} onClick={() => update({ size })}>{STAGE_SIZES[size].label}</button>
+              ))}
+            </div>
+            {portrait ? (
+              <label className="check-chip">
+                <input type="checkbox" checked={config.safeArea} onChange={(event) => update({ safeArea: event.target.checked })} />
+                Tránh vùng TikTok che
               </label>
-            ))}
+            ) : null}
           </div>
-
-          {link ? (
-            <>
-              <OverlayPreview url={link} layout={config.layout} />
-              <div className="copy-row">
-                <code title={link}>{link}</code>
-                <button className="button small" onClick={copyLink}>Copy</button>
-              </div>
-              <p className="field-hint">
-                OBS → Browser Source, dán link, Width {canvas.width}, Height {canvas.height}.
-                {config.layout === 'portrait' ? ' Vùng đỏ là chỗ giao diện TikTok che.' : ''}
-              </p>
-            </>
-          ) : (
-            <p className="error-text">{info.error || 'Đang mở overlay server…'}</p>
-          )}
         </div>
+
+        <OverlayPreview url={link} width={config.width} height={config.height} showTikTokZones={portrait && config.safeArea} />
+
+        <div className="demo-row">
+          <button className="button primary" onClick={() => onOpenWindow({ ...config, background: windowBackground })}>🪟 Mở cửa sổ game</button>
+          <button className="button" onClick={copyLink}>📋 Copy link</button>
+        </div>
+        <p className="field-hint">
+          Cửa sổ game → OBS <b>Window Capture</b> “Game Overlay”{windowBackground === 'green' ? ' + filter Chroma Key' : ''}. Link → OBS <b>Browser Source</b> {config.width}×{config.height}.
+        </p>
+
+        <details className="fold">
+          <summary>Tuỳ chọn hiển thị</summary>
+          <div className="fold-body">
+            <span className="fold-label">Phần hiện trên overlay</span>
+            <div className="check-row">
+              {OVERLAY_WIDGETS.map((widget) => (
+                <label key={widget} className="check-chip">
+                  <input type="checkbox" checked={config.widgets.includes(widget)} onChange={(event) => toggleWidget(widget, event.target.checked)} />
+                  {WIDGET_LABELS[widget]}
+                </label>
+              ))}
+            </div>
+            <label className="inline-field flush">
+              <span>Nền cửa sổ game</span>
+              <select value={windowBackground} onChange={(event) => setFrame((old) => ({ ...old, windowBackground: event.target.value as OverlayBackground }))}>
+                {(Object.keys(BACKGROUND_LABELS) as OverlayBackground[]).map((bg) => <option key={bg} value={bg}>{BACKGROUND_LABELS[bg]}</option>)}
+              </select>
+            </label>
+            <div className="copy-row">
+              <code title={link}>{link}</code>
+            </div>
+          </div>
+        </details>
       </div>
     </Panel>
   );

@@ -1,4 +1,4 @@
-import { chatTest, view, type GameDefinition } from '../types';
+import { chatTest, commandArgument, view, type GameDefinition } from '../types';
 
 export interface GuessRound {
   max: number;
@@ -15,7 +15,13 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
   id: 'guessNumber',
   title: 'Đoán số 🔢',
   category: 'fun',
+  accent: '#3b82f6',
   howTo: 'Comment một số. Màn hình báo cao hơn / thấp hơn và thu hẹp khoảng. Ai đoán trúng trước được điểm.',
+  commands: [
+    { usage: '42', description: 'Đoán một số' },
+    { usage: '!guess 42', description: 'Cách viết khác' }
+  ],
+  aliases: ['doanso', 'guess'],
   defaultConfig: { max: 100, seconds: 120, points: 5 },
   settings: [
     { key: 'max', label: 'Số lớn nhất', type: 'number', min: 10, max: 10_000 },
@@ -33,8 +39,8 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
 
   handle(state, input) {
     if (input.kind !== 'chat') return null;
-    const text = input.text.trim();
-    if (!/^\d{1,6}$/.test(text)) return null;
+    const text = commandArgument(input.text, ['guess', 'doan']);
+    if (text === null || !/^\d{1,6}$/.test(text)) return null;
 
     const value = Number(text);
     if (state.winner || value < state.low || value > state.high) return { state, consumed: true };
@@ -51,6 +57,7 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
     return {
       consumed: true,
       message: `${input.nickname} đoán ${value} → ${hint === 'up' ? 'cao hơn ⬆' : 'thấp hơn ⬇'}`,
+      effects: [{ kind: 'score', text: `${value} ${hint === 'up' ? '⬆' : '⬇'}`, user: input.nickname }],
       state: {
         ...state,
         guesses,
@@ -86,6 +93,7 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
       hint: `Đoán số bí mật từ 1 đến ${state.max}`,
       rows: [...state.guesses].reverse().map((guess) => ({
         label: `${guess.nickname}: ${guess.value}`,
+        avatar: guess.nickname,
         value: guess.hint === 'hit' ? '🎯 Trúng' : guess.hint === 'up' ? '⬆ Cao hơn' : '⬇ Thấp hơn',
         highlight: guess.hint === 'hit'
       }))

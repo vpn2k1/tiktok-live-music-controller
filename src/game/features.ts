@@ -8,6 +8,11 @@ export interface LiveFeatures {
   welcomeEnabled: boolean;
   welcomeJoins: boolean;
   welcomeSound: boolean;
+  chatCommandsEnabled: boolean;
+  /** Synthesized game sounds (start, hits, correct, win, countdown ticks). */
+  gameSounds: boolean;
+  /** Extra usernames allowed to use host commands (the connected streamer always can). */
+  moderators: string;
 }
 
 export const DEFAULT_FEATURES: LiveFeatures = {
@@ -18,7 +23,10 @@ export const DEFAULT_FEATURES: LiveFeatures = {
   fanGiftPoints: 5,
   welcomeEnabled: true,
   welcomeJoins: false,
-  welcomeSound: true
+  welcomeSound: true,
+  chatCommandsEnabled: true,
+  gameSounds: true,
+  moderators: ''
 };
 
 const NUMBER_LIMITS: Partial<Record<keyof LiveFeatures, [number, number]>> = {
@@ -35,6 +43,8 @@ export function normalizeFeatures(raw: Partial<Record<keyof LiveFeatures, unknow
     const fallback = DEFAULT_FEATURES[key];
     if (typeof fallback === 'boolean') {
       (result as Record<string, unknown>)[key] = typeof value === 'boolean' ? value : fallback;
+    } else if (typeof fallback === 'string') {
+      (result as Record<string, unknown>)[key] = typeof value === 'string' ? value.slice(0, 500) : fallback;
     } else {
       const [min, max] = NUMBER_LIMITS[key] ?? [0, Number.MAX_SAFE_INTEGER];
       const numeric = Number(value);

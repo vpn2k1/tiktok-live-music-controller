@@ -12,7 +12,8 @@
     "build:renderer": "vite build",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && npm run build:electron && npm run build:renderer",
-    "start": "npm run build:electron && electron ."
+    "start": "npm run build:electron && electron .",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "react": "^19.1.0",

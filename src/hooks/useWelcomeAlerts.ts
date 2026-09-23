@@ -51,7 +51,7 @@ export function useWelcomeAlerts(features: LiveFeatures) {
     const next = queue.current.shift() ?? null;
     alertRef.current = next;
     setAlert(next);
-    if (next && featuresRef.current.welcomeSound) playChime();
+    if (next && next.kind !== 'info' && featuresRef.current.welcomeSound) playChime();
   }, []);
 
   useEffect(() => {
@@ -59,6 +59,13 @@ export function useWelcomeAlerts(features: LiveFeatures) {
     const timer = setTimeout(showNext, SHOW_MS);
     return () => clearTimeout(timer);
   }, [alert, showNext]);
+
+  /** Queues a text reply (e.g. to !rank); dropped when the queue is full. */
+  const notify = useCallback((text: string) => {
+    if (queue.current.length >= MAX_QUEUE) return;
+    queue.current.push({ id: nextId.current++, kind: 'info', text: text.slice(0, 160) });
+    if (!alertRef.current) showNext();
+  }, [showNext]);
 
   const handleEvent = useCallback((event: LiveEvent) => {
     const settings = featuresRef.current;
@@ -74,7 +81,7 @@ export function useWelcomeAlerts(features: LiveFeatures) {
 
     if (queue.current.length >= MAX_QUEUE) {
       if (kind === 'join') return;
-      const dropIndex = queue.current.findIndex((queued) => queued.kind === 'join');
+      const dropIndex = queue.current.findIndex((queued) => queued.kind !== 'follow');
       if (dropIndex < 0) return;
       queue.current.splice(dropIndex, 1);
     }
@@ -82,5 +89,5 @@ export function useWelcomeAlerts(features: LiveFeatures) {
     if (!alertRef.current) showNext();
   }, [showNext]);
 
-  return { alert, handleEvent };
+  return { alert, handleEvent, notify };
 }

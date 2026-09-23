@@ -28,7 +28,10 @@ export const englishWordChainGame: GameDefinition<EnglishChainRound, EnglishChai
   id: 'englishWordChain',
   title: 'Word Chain (EN) 🔗',
   category: 'english',
+  accent: '#22d3ee',
   howTo: 'Comment một từ tiếng Anh bắt đầu bằng chữ cái cuối của từ trước (apple → egg → giraffe). Không lặp từ. Mỗi từ +1, hết lượt không ai nối thì kết thúc.',
+  commands: [{ usage: 'egg', description: 'Từ bắt đầu bằng chữ cái cuối của từ trước' }],
+  aliases: ['wordchain', 'chain'],
   defaultConfig: { turnSeconds: 30, minLength: 3, mode: 'letters' },
   settings: [
     { key: 'turnSeconds', label: 'Giây mỗi lượt', type: 'number', min: 10, max: 120 },
@@ -58,16 +61,18 @@ export const englishWordChainGame: GameDefinition<EnglishChainRound, EnglishChai
     const word = normalizeEnglish(input.text);
     if (word.includes(' ')) return null;
 
-    if (word[0] !== lastLetter(state.current)) return { state, consumed: true };
-    if (state.used.includes(word)) return { state, consumed: true, message: `“${word}” đã dùng rồi!` };
+    // Only accepted words are commands; ordinary chat must not use up the cooldown.
+    if (word[0] !== lastLetter(state.current)) return null;
+    if (state.used.includes(word)) return { state, consumed: false, message: `“${word}” đã dùng rồi!` };
     const valid = config.mode === 'dictionary' ? ctx.englishDictionary.words.has(word) && word.length >= config.minLength : looksLikeEnglishWord(word, config.minLength);
-    if (!valid) return { state, consumed: true, message: `“${word}” không hợp lệ.` };
+    if (!valid) return { state, consumed: false, message: `“${word}” không hợp lệ.` };
 
     const old = state.words[input.user];
     return {
       consumed: true,
       message: `${input.nickname}: ${state.current} → ${word}`,
       endsAt: ctx.now + config.turnSeconds * 1000,
+      effects: [{ kind: 'correct', text: word, user: input.nickname }],
       state: {
         current: word,
         chain: [...state.chain, { word, nickname: input.nickname }].slice(-HISTORY),
@@ -89,10 +94,11 @@ export const englishWordChainGame: GameDefinition<EnglishChainRound, EnglishChai
 
   testActions(state, config, ctx) {
     const next = [...ctx.englishDictionary.words].find((word) => word[0] === lastLetter(state.current) && word.length >= config.minLength && !state.used.includes(word));
+    const repeat = state.used.find((word) => word[0] === lastLetter(state.current));
     return [
       ...(next ? [chatTest(`Nối đúng: ${next}`, next, 3)] : []),
       chatTest('Sai chữ đầu', 'zebra', 1),
-      ...(state.used[0] ? [chatTest('Từ đã dùng', state.used[0], 0.5)] : [])
+      ...(repeat ? [chatTest(`Từ đã dùng: ${repeat}`, repeat, 0.5)] : [])
     ];
   },
 
@@ -100,7 +106,7 @@ export const englishWordChainGame: GameDefinition<EnglishChainRound, EnglishChai
     return view({
       headline: state.current.toUpperCase(),
       hint: `Next word starts with “${lastLetter(state.current).toUpperCase()}”`,
-      rows: state.chain.slice(-5, -1).reverse().map((entry) => ({ label: entry.word, value: entry.nickname }))
+      rows: state.chain.slice(-5, -1).reverse().map((entry) => ({ label: entry.word, value: entry.nickname, avatar: entry.nickname === 'Start' ? undefined : entry.nickname }))
     });
   }
 };
