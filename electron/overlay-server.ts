@@ -134,9 +134,10 @@ function listenOnce(options: OverlayServerOptions, quiet = false): Promise<Overl
 
     instance.once('error', (error: NodeJS.ErrnoException) => {
       const busy = error.code === 'EADDRINUSE';
+      // Vietnamese source texts: the renderer translates them (the port number and error detail are kept).
       const message = busy
-        ? `Cổng ${OVERLAY_PORT} đang bị chương trình khác dùng (có thể là một cửa sổ app khác). App sẽ tự thử lại khi cổng trống.`
-        : `Không mở được overlay server: ${error.message}`;
+        ? 'Cổng {0} đang bị chương trình khác dùng (có thể là một cửa sổ app khác). App sẽ tự thử lại khi cổng trống.'.replace('{0}', String(OVERLAY_PORT))
+        : 'Không mở được overlay server: {error}'.replace('{error}', () => error.message);
       if (!quiet) console.error('[overlay]', message);
       resolve({ url: null, error: message, retry: busy });
     });

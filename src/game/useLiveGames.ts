@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLanguage } from '../hooks/useLanguage';
+import { t } from '../shared/i18n';
 import type { AudioTrack, LiveEvent, OverlayGameView, OverlayHowTo } from '../shared/types';
 import {
   addPoints,
@@ -66,14 +68,15 @@ function loadWords(language: DictionaryLanguage): string[] {
   }
 }
 
-const CATEGORY_ACCENTS: Record<string, string> = { fun: '#7867ff', english: '#10b981' };
+const CATEGORY_ACCENTS: Record<string, string> = { fun: '#7867ff', english: '#10b981', japanese: '#e11d48', chinese: '#dc2626' };
 
-/** Icon chips telling viewers how to join, built from the game's command list. */
+/** Icon chips telling viewers how to join, built from the game's command list (translated). */
 function howToChips(commands: { usage: string; description: string }[]): OverlayHowTo[] {
   return commands.slice(0, 3).map((command) => {
+    // The icon follows the Vietnamese source text, so it doesn't change with the language.
     const text = command.usage;
     const icon = /tim|like/i.test(text) ? '❤️' : /gift|tặng/i.test(text) ? '🎁' : '💬';
-    return { icon, text: `${text} · ${command.description}` };
+    return { icon, text: `${t(text)} · ${t(command.description)}` };
   });
 }
 
@@ -97,8 +100,8 @@ function toGameInput(event: LiveEvent): GameInput | null {
 export function useLiveGames(options: LiveGamesOptions) {
   const [game, setGame] = useState<GameState>(createGameState);
   const [selectedId, setSelectedId] = useState<string>(() => {
-    const saved = loadJson<string>('selected-game', 'vote');
-    return getGame(saved) ? saved : 'vote';
+    const saved = loadJson<string>('selected-game', 'quiz');
+    return getGame(saved) ? saved : 'quiz';
   });
   const [rawConfigs, setRawConfigs] = useState<Record<string, Partial<GameConfig>>>(() => loadJson('game-configs', {}));
   const [features, setFeaturesState] = useState<LiveFeatures>(() => normalizeFeatures(loadJson('live-features', DEFAULT_FEATURES)));
@@ -149,7 +152,9 @@ export function useLiveGames(options: LiveGamesOptions) {
     englishDictionary: englishDictionaryRef.current
   }), []);
 
-  const finish = useCallback(() => {
+  /** Ends the round with its result and points; `quiet` skips the result banner/confetti (e.g. back to the game list). */
+  const finish = useCallback((options?: { quiet?: boolean }) => {
+    const quiet = options?.quiet === true;
     const current = gameRef.current;
     const definition = getGame(current.kind);
     if (current.phase !== 'running' || !definition) return;
@@ -159,26 +164,28 @@ export function useLiveGames(options: LiveGamesOptions) {
     const effects = result.effects ?? [best
       ? { kind: 'win' as const, text: result.message, user: best.nickname }
       : { kind: 'lose' as const, text: result.message }];
-    updateGame((old) => pushEffects(addPoints(endRound(old, result.message, result.state), result.awards), effects));
+    updateGame((old) => {
+      const ended = addPoints(endRound(old, result.message, result.state), result.awards);
+      return quiet ? ended : pushEffects(ended, effects);
+    });
     if (result.playTrackId) {
-      optionsRef.current.onPlayTrack(result.playTrackId, `Kết quả ${definition.title}`);
+      optionsRef.current.onPlayTrack(result.playTrackId, t('Kết quả {title}', { title: t(definition.title) }));
     } else {
       optionsRef.current.onAction(result.message);
     }
   }, [configFor, context, updateGame]);
 
   const applyResult = useCallback((kind: string, result: HandleResult<unknown>) => {
-    updateGame((old) => (
-      old.phase === 'running' && old.kind === kind
-        ? pushEffects({
-          ...old,
-          data: result.state,
-          message: result.message ?? old.message,
-          endsAt: result.endsAt ?? old.endsAt,
-          timerStartedAt: result.endsAt != null ? Date.now() : old.timerStartedAt
-        }, result.effects)
-        : old
-    ));
+    const current = gameRef.current;
+    if (current.phase !== 'running' || current.kind !== kind) return;
+    result.commit?.();
+    updateGame((old) => pushEffects(addPoints({
+      ...old,
+      data: result.state,
+      message: result.message ?? old.message,
+      endsAt: result.endsAt ?? old.endsAt,
+      timerStartedAt: result.endsAt != null ? Date.now() : old.timerStartedAt
+    }, result.awards ?? []), result.effects));
     if (result.finish) finish();
   }, [finish, updateGame]);
 
@@ -192,7 +199,7 @@ export function useLiveGames(options: LiveGamesOptions) {
     const definition = getGame(id ?? selectedIdRef.current);
     if (!definition) return false;
     if (gameRef.current.phase === 'running') {
-      optionsRef.current.onAction('Đang có game chạy, hãy Chốt hoặc Huỷ trước.');
+      optionsRef.current.onAction(t('Đang có game chạy, hãy Chốt hoặc Huỷ trước.'));
       return false;
     }
 
@@ -218,14 +225,14 @@ export function useLiveGames(options: LiveGamesOptions) {
       durationMs: result.durationMs,
       message: result.message,
       data: result.state
-    }, Date.now()), [{ kind: 'start', text: definition.title }]));
-    optionsRef.current.onAction(`Bắt đầu: ${definition.title}`);
+    }, Date.now()), [{ kind: 'start', text: t(definition.title) }]));
+    optionsRef.current.onAction(t('Bắt đầu: {title}', { title: t(definition.title) }));
     return true;
   }, [configFor, context, updateGame]);
 
   const cancel = useCallback(() => {
     updateGame(clearRound);
-    optionsRef.current.onAction('Đã huỷ vòng chơi');
+    optionsRef.current.onAction(t('Đã huỷ vòng chơi'));
   }, [updateGame]);
 
   /** Per-viewer chat cooldown shared by games and music rules. */
@@ -255,12 +262,18 @@ export function useLiveGames(options: LiveGamesOptions) {
     }
   }, [updateGame]);
 
+  // Parsed once per settings change, not once per comment.
+  const moderatorsRef = useRef({ text: '', names: new Set<string>() });
+
   /** Streamer, moderator, or the app's own test tools (simulated events). */
   const isHost = useCallback((user: string, simulated: boolean): boolean => {
     if (simulated) return true;
     const { hostUsername } = optionsRef.current;
     const name = user.toLowerCase();
-    return name === hostUsername?.toLowerCase() || parseModerators(featuresRef.current.moderators).has(name);
+    if (name === hostUsername?.toLowerCase()) return true;
+    const text = featuresRef.current.moderators;
+    if (moderatorsRef.current.text !== text) moderatorsRef.current = { text, names: parseModerators(text) };
+    return moderatorsRef.current.names.has(name);
   }, []);
 
   /** Runs a global chat command; returns true when the comment was one. */
@@ -277,22 +290,22 @@ export function useLiveGames(options: LiveGamesOptions) {
     switch (command.kind) {
       case 'help':
         onNotify(running
-          ? `${running.title}: ${running.commands.map((item) => `${item.usage} = ${item.description}`).join(' • ')}`
-          : 'Chưa có game. Lệnh: !help, !rank');
+          ? `${t(running.title)}: ${running.commands.map((item) => `${t(item.usage)} = ${t(item.description)}`).join(' • ')}`
+          : t('Chưa có game. Lệnh: !help, !rank'));
         break;
       case 'rank': {
-        const ranking = Object.values(current.scores).sort((a, b) => b.points - a.points);
-        const index = ranking.findIndex((entry) => entry.user === input.user);
-        onNotify(index >= 0
-          ? `${input.nickname}: ${ranking[index]?.points} điểm, hạng #${index + 1}`
-          : `${input.nickname}: chưa có điểm, chơi game để lên bảng nhé!`);
+        const entry = current.scoreboard.get(input.user);
+        const rank = current.scoreboard.rank(input.user);
+        onNotify(entry && rank
+          ? t('{nickname}: {points} điểm, hạng #{rank}/{size}', { nickname: input.nickname, points: entry.points, rank, size: current.scoreboard.size })
+          : t('{nickname}: chưa có điểm, chơi game để lên bảng nhé!', { nickname: input.nickname }));
         break;
       }
       case 'games':
         onNotify(`!start + ${GAMES.map((game) => gameNames(game)[0]).join(', ')}`);
         break;
       case 'start':
-        if (command.unknown) onNotify(`Không có game “${command.unknown}”. Gõ !games để xem tên.`);
+        if (command.unknown) onNotify(t('Không có game “{name}”. Gõ !games để xem tên.', { name: command.unknown }));
         else start(command.game?.id);
         break;
       case 'stop':
@@ -327,16 +340,25 @@ export function useLiveGames(options: LiveGamesOptions) {
     return { consumed };
   }, [acceptCommand, applyResult, awardFanPoints, configFor, context, isHost, runGlobalCommand]);
 
-  // Round timer.
+  // Round timer. Series games move to the next step (`advance`) instead of finishing.
   useEffect(() => {
     if (game.phase !== 'running' || game.endsAt == null) return undefined;
     const timer = setTimeout(() => {
       // An answer may have moved the deadline after this timer was scheduled.
       const current = gameRef.current;
-      if (current.phase === 'running' && current.endsAt != null && current.endsAt <= Date.now() + 25) finish();
+      if (current.phase !== 'running' || current.endsAt == null || current.endsAt > Date.now() + 25) return;
+      const definition = getGame(current.kind);
+      const next = definition?.advance?.(current.data, configFor(definition.id), context());
+      if (!definition || !next) {
+        finish();
+        return;
+      }
+      applyResult(definition.id, next);
+      // A step without a new deadline would stall the round.
+      if (next.endsAt == null && !next.finish) finish();
     }, Math.max(0, game.endsAt - Date.now()));
     return () => clearTimeout(timer);
-  }, [finish, game.phase, game.endsAt]);
+  }, [applyResult, configFor, context, finish, game.phase, game.endsAt]);
 
   // Clock-driven games (wheel spins).
   useEffect(() => {
@@ -359,11 +381,14 @@ export function useLiveGames(options: LiveGamesOptions) {
     return () => clearTimeout(timer);
   }, [game.phase, updateGame]);
 
+  // Views, test labels and how-to chips hold translated text: rebuild them when the language changes.
+  const language = useLanguage();
+
   const gameView: OverlayGameView = useMemo(() => {
     const definition = getGame(game.kind);
     if (!definition || game.phase === 'idle' || game.data == null) return EMPTY_VIEW;
     return definition.view(game.data, normalizeConfig(definition, rawConfigs[definition.id]));
-  }, [game.data, game.kind, game.phase, rawConfigs]);
+  }, [game.data, game.kind, game.phase, language, rawConfigs]);
 
   /** Test buttons for the running round (empty when idle or the game has none). */
   const testActions: TestAction[] = useMemo(() => {
@@ -371,7 +396,7 @@ export function useLiveGames(options: LiveGamesOptions) {
     if (!definition?.testActions || game.phase !== 'running' || game.data == null) return [];
     const ctx: GameContext = { now: game.startedAt ?? 0, random: Math.random, dictionary, englishDictionary };
     return definition.testActions(game.data, normalizeConfig(definition, rawConfigs[definition.id]), ctx);
-  }, [dictionary, englishDictionary, game.data, game.kind, game.phase, game.startedAt, rawConfigs]);
+  }, [dictionary, englishDictionary, game.data, game.kind, game.phase, game.startedAt, language, rawConfigs]);
 
   /** Accent + "how to join" chips for the running (or selected) game. */
   const overlayMeta = useMemo(() => {
@@ -380,7 +405,7 @@ export function useLiveGames(options: LiveGamesOptions) {
       accent: definition?.accent ?? CATEGORY_ACCENTS[definition?.category ?? 'fun'] ?? '#7867ff',
       howTo: definition ? howToChips(definition.commands) : []
     };
-  }, [game.kind, game.phase, selectedId]);
+  }, [game.kind, game.phase, language, selectedId]);
 
   const setConfigValue = useCallback((id: string, key: string, value: string | number) => {
     setRawConfigs((old) => ({ ...old, [id]: { ...old[id], [key]: value } }));
@@ -404,7 +429,7 @@ export function useLiveGames(options: LiveGamesOptions) {
     try {
       localStorage.setItem(DICTIONARY_KEYS[language], words.join('\n'));
     } catch {
-      optionsRef.current.onAction('Từ điển quá lớn để lưu lại; chỉ dùng trong phiên này.');
+      optionsRef.current.onAction(t('Từ điển quá lớn để lưu lại; chỉ dùng trong phiên này.'));
     }
     return words.length;
   }, []);
@@ -425,6 +450,7 @@ export function useLiveGames(options: LiveGamesOptions) {
     games: GAMES,
     game,
     getState,
+    isHost,
     gameView,
     overlayMeta,
     testActions,

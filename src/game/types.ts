@@ -1,7 +1,9 @@
+import type { BankReport } from './bankFile';
 import type { AudioTrack, OverlayGameView } from '../shared/types';
 import type { EffectInput, PointAward } from './engine';
 import type { EnglishDictionary } from './english';
 import type { WordDictionary } from './words';
+import { t } from '../shared/i18n';
 
 /** Normalized viewer input a game can react to. Text is untrusted data. */
 export type GameInput =
@@ -10,11 +12,13 @@ export type GameInput =
   | { kind: 'like'; user: string; nickname: string; count: number }
   | { kind: 'gift'; user: string; nickname: string; giftName: string; count: number };
 
-export type GameCategory = 'fun' | 'english';
+export type GameCategory = 'fun' | 'english' | 'japanese' | 'chinese';
 
 export const GAME_CATEGORY_LABELS: Record<GameCategory, string> = {
   fun: 'Giải trí',
-  english: 'Tiếng Anh 🇬🇧'
+  english: 'Tiếng Anh 🇬🇧',
+  japanese: 'Tiếng Nhật 🇯🇵',
+  chinese: 'Tiếng Trung 🇨🇳'
 };
 
 export interface GameCommand {
@@ -35,6 +39,8 @@ export interface SettingField {
   maxLength?: number;
   options?: { value: string; label: string }[];
   hint?: string;
+  /** Textarea banks: content of the downloadable sample file ("#" lines are instructions). */
+  sample?: string;
 }
 
 export interface GameContext {
@@ -72,6 +78,14 @@ export interface HandleResult<S> {
   endsAt?: number;
   /** One-shot overlay effects / sounds (e.g. a hit number, a correct answer). */
   effects?: EffectInput[];
+  /** Points added to the session leaderboard right away (e.g. when a question closes). */
+  awards?: PointAward[];
+  /**
+   * Side effect run only if the controller applies this result (not when the
+   * viewer is rate-limited): lets big per-round records (see series.ts
+   * AnswerBook) be updated in place instead of copied on every answer.
+   */
+  commit?: () => void;
 }
 
 /** Simulated viewer input for the app's test buttons and demo bot. */
@@ -99,7 +113,8 @@ export interface FinishResult<S> {
 
 /**
  * A LIVE game. Every function must be pure (no Date.now/Math.random inside;
- * use ctx) so results can be discarded when a viewer is rate-limited.
+ * use ctx) so results can be discarded when a viewer is rate-limited; the one
+ * exception is `HandleResult.commit`, which runs only when a result is applied.
  */
 export interface GameDefinition<S, C extends GameConfig> {
   id: string;
@@ -120,8 +135,16 @@ export interface GameDefinition<S, C extends GameConfig> {
   handle(state: S, input: GameInput, config: C, ctx: GameContext): HandleResult<S> | null;
   /** Optional clock-driven updates (e.g. wheel spins), called ~4×/s while running. */
   tick?(state: S, config: C, ctx: GameContext): HandleResult<S> | null;
+  /**
+   * Called when the round deadline passes. Return a result with a new `endsAt`
+   * to keep going (next question, answer reveal…), or null to finish the round.
+   * Without it the deadline finishes the round.
+   */
+  advance?(state: S, config: C, ctx: GameContext): HandleResult<S> | null;
   finish(state: S, config: C, ctx: GameContext): FinishResult<S>;
   view(state: S, config: C): OverlayGameView;
+  /** Textarea banks: which lines this game can use (shown after an import). */
+  checkBank?(key: string, text: string): BankReport | null;
   /**
    * Test buttons for the running round (may use the hidden answer — test only).
    * Sent through the normal simulate IPC as random viewers.
@@ -130,7 +153,7 @@ export interface GameDefinition<S, C extends GameConfig> {
 }
 
 export const chatTest = (label: string, text: string, weight?: number): TestAction => ({ label, input: { kind: 'chat', text }, weight });
-export const likeTest = (count: number, weight?: number): TestAction => ({ label: `+${count} tim`, input: { kind: 'like', count }, weight });
+export const likeTest = (count: number, weight?: number): TestAction => ({ label: t('+{count} tim', { count }), input: { kind: 'like', count }, weight });
 export const giftTest = (giftName: string, count = 1, weight?: number): TestAction => ({ label: `${giftName} ×${count}`, input: { kind: 'gift', giftName, count }, weight });
 
 export const EMPTY_VIEW: OverlayGameView = {

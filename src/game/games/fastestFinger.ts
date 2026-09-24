@@ -1,3 +1,5 @@
+import { t } from '../../shared/i18n';
+import { checkBankLines } from '../bankFile';
 import { chatTest, view, type GameDefinition } from '../types';
 import { normalizeText } from '../words';
 
@@ -22,10 +24,20 @@ export const fastestFingerGame: GameDefinition<FastestRound, FastestConfig> = {
   commands: [{ usage: 'từ trên màn hình', description: 'Gõ đúng từ đang hiện, nhanh nhất thắng' }],
   aliases: ['nhanhtay', 'fast'],
   defaultConfig: { seconds: 20, points: 3, words: '' },
+  checkBank(key, text) {
+    return key === 'words' ? checkBankLines(text, (line) => normalizeText(line) !== '') : null;
+  },
   settings: [
     { key: 'seconds', label: 'Thời gian (giây)', type: 'number', min: 5, max: 120 },
     { key: 'points', label: 'Điểm người thắng', type: 'number', min: 1, max: 100 },
-    { key: 'words', label: 'Danh sách từ', type: 'textarea', maxLength: 5000, hint: 'Mỗi dòng một từ. Để trống = dùng từ có sẵn.' }
+    {
+      key: 'words',
+      label: 'Danh sách từ',
+      type: 'textarea',
+      maxLength: 200_000,
+      hint: 'Mỗi dòng một từ/cụm từ. Để trống = dùng từ có sẵn. Nhập được file .txt / .csv.',
+      sample: ['# Mẫu Ai nhanh tay — mỗi dòng 1 từ hoặc cụm từ, viewer gõ đúng y hệt để thắng.', '# Dòng bắt đầu bằng # là ghi chú, app bỏ qua. Lưu file dạng UTF-8.', 'con mèo', 'bánh mì', 'hello world'].join('\n')
+    }
   ],
 
   start(config, ctx) {
@@ -44,20 +56,20 @@ export const fastestFingerGame: GameDefinition<FastestRound, FastestConfig> = {
 
   finish(state, config) {
     return state.winner
-      ? { state, message: `⚡ ${state.winner.nickname} nhanh tay nhất!`, awards: [{ ...state.winner, points: config.points }] }
-      : { state, message: 'Hết giờ, không ai gõ đúng.', awards: [] };
+      ? { state, message: t('⚡ {name} nhanh tay nhất!', { name: state.winner.nickname }), awards: [{ ...state.winner, points: config.points }] }
+      : { state, message: t('Hết giờ, không ai gõ đúng.'), awards: [] };
   },
 
   testActions(state) {
-    return [chatTest('Gõ sai', 'sai rồi', 4), chatTest(`Gõ đúng: ${state.target}`, state.target, 0.3)];
+    return [chatTest(t('Gõ sai'), 'sai rồi', 4), chatTest(t('Gõ đúng: {word}', { word: state.target }), state.target, 0.3)];
   },
 
   view(state) {
     return view({
       headline: state.target,
       style: { headline: 'tiles' },
-      hint: 'Gõ chính xác từ này nhanh nhất!',
-      rows: state.winner ? [{ badge: '⚡', label: state.winner.nickname, avatar: state.winner.nickname, value: 'Thắng', highlight: true }] : []
+      hint: t('Gõ chính xác từ này nhanh nhất!'),
+      rows: state.winner ? [{ badge: '⚡', label: state.winner.nickname, avatar: state.winner.nickname, value: t('Thắng'), highlight: true }] : []
     });
   }
 };

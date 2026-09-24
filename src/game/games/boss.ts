@@ -1,3 +1,4 @@
+import { t } from '../../shared/i18n';
 import type { PointAward } from '../engine';
 import { chatTest, commandArgument, giftTest, likeTest, percentOf, ranked, view, type GameDefinition } from '../types';
 
@@ -10,6 +11,13 @@ export interface BossRound {
 }
 
 type BossConfig = { hp: number; seconds: number; giftDamage: number; chatDamage: number; reward: string };
+
+const DEFAULT_REWARD = 'Streamer hát 1 bài theo yêu cầu';
+
+/** The default reward follows the app language; a host-written one is shown as is. */
+function rewardText(reward: string): string {
+  return reward === DEFAULT_REWARD ? t(DEFAULT_REWARD) : reward;
+}
 
 const BOSS_POINTS = 1;
 const BOSS_WIN_BONUS = 2;
@@ -64,7 +72,7 @@ export const bossGame: GameDefinition<BossRound, BossConfig> = {
     { usage: 'Thả tim', description: '1 dmg mỗi tim' },
     { usage: 'Tặng gift', description: 'Sát thương lớn' }
   ],
-  defaultConfig: { hp: 300, seconds: 90, giftDamage: 20, chatDamage: 2, reward: 'Streamer hát 1 bài theo yêu cầu' },
+  defaultConfig: { hp: 300, seconds: 90, giftDamage: 20, chatDamage: 2, reward: DEFAULT_REWARD },
   settings: [
     { key: 'hp', label: 'Máu boss', type: 'number', min: 10, max: 100_000 },
     { key: 'seconds', label: 'Thời gian (giây)', type: 'number', min: 10, max: 600 },
@@ -97,15 +105,15 @@ export const bossGame: GameDefinition<BossRound, BossConfig> = {
 
   finish(state, config) {
     const message = bossDefeated(state)
-      ? `Boss đã bị hạ! Đòn kết liễu: ${state.lastHit?.nickname ?? '?'}.${config.reward ? ` 🎁 ${config.reward}` : ''}`
-      : `Boss thắng, còn ${state.hp}/${state.maxHp} HP`;
+      ? t('Boss đã bị hạ! Đòn kết liễu: {name}.', { name: state.lastHit?.nickname ?? '?' }) + (config.reward ? ` 🎁 ${rewardText(config.reward)}` : '')
+      : t('Boss thắng, còn {hp}/{max} HP', { hp: state.hp, max: state.maxHp });
     return {
       state,
       message,
       awards: bossAwards(state),
       effects: [bossDefeated(state)
-        ? { kind: 'win', text: 'Boss đã bị hạ!', user: state.lastHit?.nickname }
-        : { kind: 'lose', text: 'Boss thắng 😈' }]
+        ? { kind: 'win', text: t('Boss đã bị hạ!'), user: state.lastHit?.nickname }
+        : { kind: 'lose', text: t('Boss thắng 😈') }]
     };
   },
 
@@ -119,7 +127,7 @@ export const bossGame: GameDefinition<BossRound, BossConfig> = {
     return view({
       headline: bossDefeated(state) ? '💀' : '👾',
       style: { headline: 'boss' },
-      hint: `Thả tim = 1 dmg${config.chatDamage > 0 ? ` • !hit = ${config.chatDamage}` : ''} • Gift = ${config.giftDamage} dmg`,
+      hint: `${t('Thả tim = 1 dmg')}${config.chatDamage > 0 ? ` • !hit = ${config.chatDamage}` : ''} • Gift = ${config.giftDamage} dmg`,
       progress: { label: 'HP Boss', value: state.hp, max: state.maxHp },
       rows: attackers.map((attacker, index) => ({
         badge: String(index + 1),

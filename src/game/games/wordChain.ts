@@ -1,3 +1,4 @@
+import { t } from '../../shared/i18n';
 import type { PointAward } from '../engine';
 import { chatTest, view, type GameDefinition } from '../types';
 import { twoSyllables, type WordDictionary } from '../words';
@@ -73,16 +74,16 @@ export const wordChainGame: GameDefinition<WordChainRound, WordChainConfig> = {
     // the viewer's cooldown right before a real answer.
     if (syllables[0] !== lastSyllable(state.current)) return null;
     if (state.used.includes(word)) {
-      return { state, consumed: false, message: `“${word}” đã dùng rồi!` };
+      return { state, consumed: false, message: t('“{word}” đã dùng rồi!', { word }) };
     }
     if (config.mode === 'dictionary' && !ctx.dictionary.words.has(word)) {
-      return { state, consumed: false, message: `“${word}” không có trong từ điển.` };
+      return { state, consumed: false, message: t('“{word}” không có trong từ điển.', { word }) };
     }
 
     const old = state.words[input.user];
     return {
       consumed: true,
-      message: `${input.nickname} nối “${word}”`,
+      message: t('{name} nối “{word}”', { name: input.nickname, word }),
       endsAt: ctx.now + config.turnSeconds * 1000,
       effects: [{ kind: 'correct', text: word, user: input.nickname }],
       state: {
@@ -105,8 +106,8 @@ export const wordChainGame: GameDefinition<WordChainRound, WordChainConfig> = {
       state,
       awards,
       message: length > 0
-        ? `Hết lượt! Chuỗi dài ${length} từ, không ai nối được “${state.current}”.`
-        : `Không ai nối được “${state.current}”.`
+        ? t('Hết lượt! Chuỗi dài {n} từ, không ai nối được “{word}”.', { n: length, word: state.current })
+        : t('Không ai nối được “{word}”.', { word: state.current })
     };
   },
 
@@ -115,17 +116,17 @@ export const wordChainGame: GameDefinition<WordChainRound, WordChainConfig> = {
     const next = [...ctx.dictionary.words].find((word) => word.split(' ')[0] === start && !state.used.includes(word));
     const repeat = state.used.find((word) => word.split(' ')[0] === start);
     return [
-      ...(next ? [chatTest(`Nối đúng: ${next}`, next)] : []),
-      chatTest('Nối sai chữ', 'xin chào', 2),
-      ...(repeat ? [chatTest(`Từ đã dùng: ${repeat}`, repeat, 0.5)] : [])
+      ...(next ? [chatTest(t('Nối đúng: {word}', { word: next }), next)] : []),
+      chatTest(t('Nối sai chữ'), 'xin chào', 2),
+      ...(repeat ? [chatTest(t('Từ đã dùng: {word}', { word: repeat }), repeat, 0.5)] : [])
     ];
   },
 
   view(state) {
     return view({
       headline: state.current,
-      hint: `Nối từ bắt đầu bằng “${lastSyllable(state.current)}”`,
-      rows: state.chain.slice(-5, -1).reverse().map((entry) => ({ label: entry.word, value: entry.nickname, avatar: entry.user ? entry.nickname : undefined }))
+      hint: t('Nối từ bắt đầu bằng “{syllable}”', { syllable: lastSyllable(state.current) }),
+      rows: state.chain.slice(-5, -1).reverse().map((entry) => ({ label: entry.word, value: entry.user ? entry.nickname : t(entry.nickname), avatar: entry.user ? entry.nickname : undefined }))
     });
   }
 };

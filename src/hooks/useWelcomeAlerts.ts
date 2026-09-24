@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LiveFeatures } from '../game/features';
+import { t } from '../shared/i18n';
 import type { LiveEvent, OverlayAlert } from '../shared/types';
 
 const SHOW_MS = 3500;
@@ -76,7 +77,7 @@ export function useWelcomeAlerts(features: LiveFeatures) {
     const item: OverlayAlert = {
       id: nextId.current++,
       kind,
-      text: kind === 'follow' ? `Cảm ơn ${event.nickname} đã follow!` : `Chào mừng ${event.nickname}!`
+      text: kind === 'follow' ? t('Cảm ơn {name} đã follow!', { name: event.nickname }) : t('Chào mừng {name}!', { name: event.nickname })
     };
 
     if (queue.current.length >= MAX_QUEUE) {

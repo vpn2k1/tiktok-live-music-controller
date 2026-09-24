@@ -1,3 +1,4 @@
+import { t } from '../../shared/i18n';
 import type { PointAward } from '../engine';
 import { chatTest, commandArgument, giftTest, likeTest, percentOf, ranked, view, type GameDefinition } from '../types';
 
@@ -53,7 +54,7 @@ export const raceGame: GameDefinition<RaceRound, RaceConfig> = {
         if (old) return { state, consumed: true };
         return {
           consumed: true,
-          message: `${input.nickname} vào vạch xuất phát`,
+          message: t('{name} vào vạch xuất phát', { name: input.nickname }),
           state: { ...state, racers: { ...state.racers, [input.user]: { nickname: input.nickname, distance: 0 } } }
         };
       }
@@ -84,7 +85,9 @@ export const raceGame: GameDefinition<RaceRound, RaceConfig> = {
     return {
       state,
       awards,
-      message: leader ? `🏆 ${leader.nickname} ${state.winner ? 'về đích đầu tiên' : 'chạy xa nhất'}!` : 'Không ai tham gia đua.'
+      message: leader
+        ? state.winner ? t('🏆 {name} về đích đầu tiên!', { name: leader.nickname }) : t('🏆 {name} chạy xa nhất!', { name: leader.nickname })
+        : t('Không ai tham gia đua.')
     };
   },
 
@@ -94,7 +97,7 @@ export const raceGame: GameDefinition<RaceRound, RaceConfig> = {
 
   view(state, config) {
     return view({
-      hint: `!join để vào • Tim${config.chatStep > 0 ? ' / !run' : ''} để chạy • Gift = +${config.giftBoost} bước`,
+      hint: t('!join để vào • Tim{run} để chạy • Gift = +{n} bước', { run: config.chatStep > 0 ? ' / !run' : '', n: config.giftBoost }),
       race: {
         icon: config.icon,
         lanes: raceStandings(state).slice(0, 5).map((racer) => ({

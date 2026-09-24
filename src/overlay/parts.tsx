@@ -1,5 +1,6 @@
-import type { CSSProperties } from 'react';
-import type { OverlayRace, OverlayRow, OverlayTeam, OverlayWheel } from '../shared/types';
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import type { OverlayCards, OverlayCrossword, OverlayMenu, OverlayRace, OverlayRow, OverlayTeam, OverlayWheel } from '../shared/types';
+import { t } from '../shared/i18n';
 
 /** Stable, bright color for a viewer name (no network avatars needed). */
 export function nameColor(name: string): string {
@@ -107,13 +108,13 @@ export function TugOfWar({ teams }: { teams: [OverlayTeam, OverlayTeam] }) {
       <div className="ov-tug-teams">
         <div className="ov-tug-team a">
           <strong>{teams[0].label}</strong>
-          <span>{teams[0].members} người</span>
+          <span>{t('{count} người', { count: teams[0].members })}</span>
           <b>{teams[0].score}</b>
         </div>
         <span className="ov-vs">VS</span>
         <div className="ov-tug-team b">
           <strong>{teams[1].label}</strong>
-          <span>{teams[1].members} người</span>
+          <span>{t('{count} người', { count: teams[1].members })}</span>
           <b>{teams[1].score}</b>
         </div>
       </div>
@@ -129,7 +130,7 @@ export function TugOfWar({ teams }: { teams: [OverlayTeam, OverlayTeam] }) {
 
 /** Race lanes with name badges riding on the track; the leader wears a crown. */
 export function RaceTrack({ race }: { race: OverlayRace }) {
-  if (!race.lanes.length) return <p className="ov-hint big">❤️ Thả tim để xuất phát!</p>;
+  if (!race.lanes.length) return <p className="ov-hint big">{t('❤️ Thả tim để xuất phát!')}</p>;
   const flip = race.icon !== '🚀';
   return (
     <div className="ov-race">
@@ -165,7 +166,7 @@ export function Wheel({ wheel }: { wheel: OverlayWheel }) {
   return (
     <div className={`ov-wheel ${wheel.spinning ? 'spinning' : ''}`}>
       <span className="ov-wheel-pointer">▼</span>
-      <svg viewBox="0 0 200 200" role="img" aria-label="Vòng quay thử thách">
+      <svg viewBox="0 0 200 200" role="img" aria-label={t('Vòng quay thử thách')}>
         <g
           style={{
             transform: `rotate(${rotation}deg)`,
@@ -196,5 +197,155 @@ export function Wheel({ wheel }: { wheel: OverlayWheel }) {
         <circle cx="100" cy="100" r="13" fill="#11151d" stroke="#fff" strokeWidth="3" />
       </svg>
     </div>
+  );
+}
+
+/** Olympia-style crossword: numbered rows aligned on the highlighted keyword column. */
+export function Crossword({ crossword }: { crossword: OverlayCrossword }) {
+  return (
+    <div className="ov-crossword" style={{ '--cols': crossword.columns + 1, '--rows': crossword.rows.length } as CSSProperties}>
+      {crossword.rows.map((row, rowIndex) => (
+        <div key={rowIndex} className={`ov-cw-row ${row.state}`}>
+          <span className="ov-cw-num">{rowIndex + 1}</span>
+          {row.cells.map((letter, index) => (
+            <span
+              key={index}
+              className={`ov-cw-cell ${index === row.keyIndex ? 'key' : ''} ${letter ? 'open' : ''}`}
+              style={{ gridColumn: row.offset + index + 2 }}
+            >
+              {letter}
+            </span>
+          ))}
+        </div>
+      ))}
+      <div className={`ov-cw-keyword ${crossword.keywordSolved ? 'solved' : ''}`}>
+        <span>🔑</span>
+        {crossword.keyword.map((letter, index) => <span key={index} className={`ov-cw-cell key ${letter ? 'open' : ''}`}>{letter}</span>)}
+      </div>
+    </div>
+  );
+}
+
+/** Flip cards: numbered backs, faces flip in when peeked or done. */
+export function CardGrid({ cards }: { cards: OverlayCards }) {
+  return (
+    <div className="ov-cards" style={{ '--card-cols': cards.columns } as CSSProperties}>
+      {cards.cards.map((card, index) => (
+        <span key={index} className={`ov-flip ${card.state}`}>
+          {card.state === 'closed'
+            ? <span className="ov-flip-back">{card.label}</span>
+            // Words (romaji, meanings) get a smaller font than a single emoji or character.
+            : <span className={`ov-flip-face ${Array.from(card.face).length > 2 ? 'text' : ''}`}>{card.face}</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Auto-scroll speed of a long game list (px per second) and the pause at each end. */
+const MENU_SCROLL_SPEED = 28;
+const MENU_SCROLL_PAUSE_MS = 2500;
+/** After the streamer scrolls or hovers the list, auto-scroll waits this long. */
+const MENU_SCROLL_IDLE_MS = 5000;
+
+/**
+ * Keeps a long list moving so OBS viewers see every game: scrolls down slowly,
+ * pauses, jumps back to the top. Stops while the streamer hovers or scrolls it.
+ */
+function useAutoScroll(ref: RefObject<HTMLElement | null>): boolean {
+  const [overflowing, setOverflowing] = useState(false);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+    const measure = () => setOverflowing(element.scrollHeight > element.clientHeight + 4);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    for (const child of Array.from(element.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !overflowing) return undefined;
+    let frame = 0;
+    let last = performance.now();
+    let holdUntil = last + MENU_SCROLL_PAUSE_MS;
+    let position = element.scrollTop;
+    const hold = () => {
+      holdUntil = performance.now() + MENU_SCROLL_IDLE_MS;
+      position = element.scrollTop;
+    };
+    const step = (now: number) => {
+      const elapsed = Math.min(100, now - last);
+      last = now;
+      if (now >= holdUntil) {
+        const end = element.scrollHeight - element.clientHeight;
+        if (position >= end - 1) {
+          position = 0;
+          element.scrollTo({ top: 0, behavior: 'smooth' });
+          holdUntil = now + MENU_SCROLL_PAUSE_MS;
+        } else {
+          position = Math.min(end, position + (MENU_SCROLL_SPEED * elapsed) / 1000);
+          element.scrollTop = position;
+          if (position >= end - 1) holdUntil = now + MENU_SCROLL_PAUSE_MS;
+        }
+      }
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    element.addEventListener('wheel', hold, { passive: true });
+    element.addEventListener('pointermove', hold, { passive: true });
+    element.addEventListener('touchstart', hold, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      element.removeEventListener('wheel', hold);
+      element.removeEventListener('pointermove', hold);
+      element.removeEventListener('touchstart', hold);
+    };
+  }, [overflowing, ref]);
+
+  return overflowing;
+}
+
+/**
+ * The game list as rectangular game tiles in 2 columns: icon plate colored by
+ * category with the vote number as a gold coin, name, vote bar and count; the
+ * leading game gets a gold ring and 👑. Long lists scroll (wheel in the game
+ * window, slow auto-scroll for OBS). In the game window tiles are clickable
+ * (`onPick` with the 1-based number).
+ */
+export function GameMenu({ menu, onPick }: { menu: OverlayMenu; onPick?: (number: number) => void }) {
+  const listRef = useRef<HTMLOListElement | null>(null);
+  const overflowing = useAutoScroll(listRef);
+  return (
+    <ol ref={listRef} className={`ov-menu ${overflowing ? 'scrolling' : ''}`}>
+      {menu.items.map((item, index) => (
+        <li
+          key={item.number}
+          className={`ov-menu-item cat-${item.category} ${item.leader ? 'leader' : ''} ${onPick ? 'pickable' : ''}`}
+          style={{ '--pct': `${item.percent}%`, animationDelay: `${Math.min(index, 20) * 30}ms` } as CSSProperties}
+          onClick={onPick ? () => onPick(item.number) : undefined}
+          title={onPick ? t('Chơi {title}', { title: item.name }) : undefined}
+        >
+          <span className="ov-menu-icon" aria-hidden="true">
+            {item.icon}
+            <span className="ov-menu-num">{item.number}</span>
+          </span>
+          <span className="ov-menu-body">
+            <span className="ov-menu-name">{item.name}</span>
+            <span className="ov-menu-meta">
+              <span className="ov-menu-bar"><span /></span>
+              <span className="ov-menu-votes">
+                <strong>{item.votes}</strong>
+                {item.votes > 0 ? <small>{item.percent}%</small> : null}
+              </span>
+            </span>
+          </span>
+          {item.leader ? <span className="ov-menu-crown" aria-hidden="true">👑</span> : null}
+        </li>
+      ))}
+    </ol>
   );
 }

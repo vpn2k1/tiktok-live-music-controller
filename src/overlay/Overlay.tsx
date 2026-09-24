@@ -1,19 +1,24 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNow } from '../hooks/useNow';
 import {
+  fullStage,
   OVERLAY_BACKGROUNDS,
   OVERLAY_STREAM_PATH,
+  OVERLAY_WINDOW_PARAM,
   parseOverlayConfig,
   STAGE_BASE_WIDTH,
   stagePadding,
   stageWidth,
+  windowActionHash,
   type OverlayConfig,
   type OverlayWidget,
+  type OverlayWindowAction,
   type StagePosition
 } from '../shared/overlay';
+import { setLanguage, t } from '../shared/i18n';
 import type { OverlayState } from '../shared/types';
 import { Confetti, EffectBanner, Popups, useEffectPlayer } from './effects';
-import { AnswerTiles, Avatar, CountdownRing, LetterTiles, RaceTrack, TugOfWar, Wheel } from './parts';
+import { AnswerTiles, Avatar, CardGrid, CountdownRing, Crossword, GameMenu, LetterTiles, RaceTrack, TugOfWar, Wheel } from './parts';
 
 function isOverlayState(value: unknown): value is OverlayState {
   if (!value || typeof value !== 'object') return false;
@@ -30,7 +35,11 @@ function useOverlayState(): OverlayState | null {
     source.onmessage = (message: MessageEvent<string>) => {
       try {
         const parsed: unknown = JSON.parse(message.data);
-        if (isOverlayState(parsed)) setState(parsed);
+        if (isOverlayState(parsed)) {
+          // Before the render, so this window's own labels use the app's language.
+          setLanguage(parsed.lang);
+          setState(parsed);
+        }
       } catch {
         // Ignore malformed frames; the next update replaces the state.
       }
@@ -71,15 +80,30 @@ function Stage({ config, children, layers }: { config: OverlayConfig; children: 
     );
   }
   const padding = stagePadding(config);
+  const frameStyle = {
+    width: config.width,
+    height: config.height,
+    padding: `${padding.top}px ${padding.right}px ${padding.bottom}px ${padding.left}px`
+  };
+  if (config.size === 'full') {
+    // The column fills the padded frame; the game card stretches to the full height.
+    const stage = fullStage(config);
+    return (
+      <div className="overlay layout-canvas full" style={{ ...frameStyle, '--frame-zoom': stage.zoom } as CSSProperties}>
+        <div className="ov-stage" style={{ width: stage.width, height: stage.height }}>
+          <div className={`ov-column full ${stage.wide ? 'wide' : ''}`} style={{ width: stage.designWidth, height: stage.designHeight, zoom: stage.zoom }}>{children}</div>
+        </div>
+        {layers}
+      </div>
+    );
+  }
   const width = stageWidth(config);
   const zoom = width / STAGE_BASE_WIDTH;
   return (
     <div
       className="overlay layout-canvas"
       style={{
-        width: config.width,
-        height: config.height,
-        padding: `${padding.top}px ${padding.right}px ${padding.bottom}px ${padding.left}px`,
+        ...frameStyle,
         ...stageAlignment(config.position),
         '--frame-zoom': zoom
       } as CSSProperties}
@@ -92,8 +116,66 @@ function Stage({ config, children, layers }: { config: OverlayConfig; children: 
   );
 }
 
+/**
+ * Only in the app's standalone game window (frameless): the whole page drags
+ * the window, and a close bar shows while the window is focused — it hides as
+ * soon as the streamer clicks back into the app, so OBS doesn't capture it.
+ */
+/** Game window only: tells the app about a click (main reads the URL hash; see parseWindowAction). */
+function sendWindowAction(action: OverlayWindowAction): void {
+  window.location.hash = windowActionHash(action, Date.now());
+}
+
+/** Game window buttons (icons only), shown while the window is focused so OBS doesn't capture them. */
+function WindowControls({ menuOpen }: { menuOpen: boolean }) {
+  const [focused, setFocused] = useState(() => document.hasFocus());
+
+  useEffect(() => {
+    document.documentElement.classList.add('window-mode');
+    const focus = () => setFocused(true);
+    const blur = () => setFocused(false);
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') window.close();
+    };
+    window.addEventListener('focus', focus);
+    window.addEventListener('blur', blur);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('focus', focus);
+      window.removeEventListener('blur', blur);
+      window.removeEventListener('keydown', key);
+    };
+  }, []);
+
+  return (
+    <>
+      {menuOpen ? null : (
+        <button
+          type="button"
+          className={`win-button win-menu ${focused ? 'show' : ''}`}
+          onClick={() => sendWindowAction({ type: 'menu' })}
+          title={t('Về danh sách game')}
+          aria-label={t('Về danh sách game')}
+        >
+          ☰
+        </button>
+      )}
+      <button
+        type="button"
+        className={`win-button win-close ${focused ? 'show' : ''}`}
+        onClick={() => window.close()}
+        title={t('Đóng cửa sổ game')}
+        aria-label={t('Đóng cửa sổ game')}
+      >
+        ✕
+      </button>
+    </>
+  );
+}
+
 export default function Overlay() {
   const [config] = useState(() => parseOverlayConfig(window.location.search));
+  const [windowMode] = useState(() => new URLSearchParams(window.location.search).get(OVERLAY_WINDOW_PARAM) === '1');
   const state = useOverlayState();
   const running = state?.game.phase === 'running' && state.game.endsAt != null;
   const now = useNow(running);
@@ -103,10 +185,15 @@ export default function Overlay() {
     document.body.style.background = OVERLAY_BACKGROUNDS[config.background];
   }, [config.background]);
 
+  const menuOpen = state?.game.menu != null && state.game.phase === 'running';
+  const controls = windowMode ? <WindowControls menuOpen={menuOpen} /> : null;
+  /** In the game window, games in the list are picked by clicking them. */
+  const pickable = windowMode && menuOpen;
+
   if (!state) {
     return (
-      <Stage config={config}>
-        <div className="overlay-waiting">Đang chờ TikTok LIVE Game Controller…</div>
+      <Stage config={config} layers={controls}>
+        <div className="overlay-waiting">{t('Đang chờ TikLiveVPN…')}</div>
       </Stage>
     );
   }
@@ -137,7 +224,7 @@ export default function Overlay() {
               ? <CountdownRing remainingMs={remaining} totalMs={totalMs} />
               : <span className="ov-badge live">● LIVE</span>
           ) : (
-            <span className="ov-badge">Kết thúc</span>
+            <span className="ov-badge">{t('Kết thúc')}</span>
           )}
         </header>
 
@@ -163,12 +250,20 @@ export default function Overlay() {
         {game.teams ? <TugOfWar teams={game.teams} /> : null}
         {game.race ? <RaceTrack race={game.race} /> : null}
         {game.wheel ? <Wheel wheel={game.wheel} /> : null}
+        {game.crossword ? <Crossword crossword={game.crossword} /> : null}
+        {game.cards ? <CardGrid cards={game.cards} /> : null}
 
-        {game.rows.length ? (
+        {game.menu ? (
+          <GameMenu menu={game.menu} onPick={pickable ? (number) => sendWindowAction({ type: 'pick', index: number }) : undefined} />
+        ) : game.rows.length ? (
           game.style?.rows === 'quiz' ? <AnswerTiles rows={game.rows} /> : (
-            <ol className="ov-options">
+            <ol className={`ov-options ${game.rows.length > 4 ? 'many' : ''}`}>
               {game.rows.map((row, index) => (
-                <li key={rowKey(game.rows, index)} className={`ov-option ${row.highlight ? 'highlight' : ''} ${row.badge ? '' : 'no-badge'}`}>
+                <li
+                  key={rowKey(game.rows, index)}
+                  className={`ov-option ${row.highlight ? 'highlight' : ''} ${row.badge ? '' : 'no-badge'}`}
+                  style={row.percent != null ? { '--pct': `${row.percent}%` } as CSSProperties : undefined}
+                >
                   {row.badge ? <span className="ov-option-key">{row.badge}</span> : null}
                   <span className="ov-option-body">
                     <span className="ov-option-label">{row.avatar ? <Avatar name={row.avatar} size={22} /> : null}{row.label}</span>
@@ -192,7 +287,7 @@ export default function Overlay() {
     ) : null,
     leaderboard: leaderboard.length ? (
       <section className="ov-card ov-leaderboard">
-        <header>🏆 Bảng xếp hạng</header>
+        <header>{t('🏆 Bảng xếp hạng')}</header>
         <ol>
           {leaderboard.map((entry, index) => (
             <li key={entry.user} className={index < 3 ? `top top-${index + 1}` : ''}>
@@ -222,10 +317,11 @@ export default function Overlay() {
         <>
           <Confetti fire={fx.confetti} />
           <div className="ov-banner-layer"><EffectBanner effect={fx.banner} /></div>
+          {controls}
         </>
       )}
     >
-      {visible.map((widget) => <div key={widget}>{cards[widget]}</div>)}
+      {visible.map((widget) => <div key={widget} className={`ov-slot ov-slot-${widget}`}>{cards[widget]}</div>)}
     </Stage>
   );
 }

@@ -8,8 +8,9 @@ TikTok LIVE
 TikTokLiveConnection (Electron main)
    ↓ normalize
 { type, user, comment/gift/count }
-   ↓ IPC: tiktok:event
-React App
+   ↓ LiveEventBatcher (100 ms batches, overload caps)
+   ↓ IPC: tiktok:events
+React App (one render per batch)
    ↓ processLiveEvent
 Rules
    ↓
@@ -29,10 +30,25 @@ LiveEvent → useLiveGames.handleEvent → running GameDefinition.handle (pure)
           → cooldown check (chat commands) → state update → overlay view
 timer / tick → GameDefinition.finish → points + optional track change
 useAutoPlay (1 s loop) → finish / start next game on the LIVE + per-game timers
-gift LiveEvent → useAutoPlay.handleEvent → switch game (after the running game saw it)
+gift / chat LiveEvent → useAutoPlay.handleEvent → lobby votes, !doigame, gift → switch game
+idle + lobby on → lobby list as the overlay game card → most votes → start that game
 ```
 
-Game modules never touch React, the filesystem or the network; they receive a context (`now`, `random`, dictionary, playlist) and return new state.
+Game modules never touch React, the filesystem or the network; they receive a context (`now`, `random`, dictionary, playlist) and return new state. Two hooks matter at scale: `HandleResult.commit` (write per-viewer records in place, only when the result is applied) and `advance` (the round deadline moves a question series on instead of finishing). The session leaderboard is a mutable `Scoreboard` (O(log n) per award); `GameState.scoreVersion` signals changes.
+
+## AI generation
+
+```text
+AiBankBox (renderer) → ai:generate {game, format = bank sample, topic, count…}
+  → electron/ai.ts: decrypt key (safeStorage) → buildPrompt → net.fetch fixed host
+  → cleanGeneratedLines → renderer keeps lines the game's checkBank accepts → streamer edits → append / replace
+```
+
+Keys never cross to the renderer (`AiStatus` has only `hasKey` and the last 4 characters). `src/shared/ai.ts` holds the pure parts (validation, prompt, provider request/response formats) and is unit-tested in `tests/ai.test.ts`.
+
+## Language
+
+The UI and game texts are written in Vietnamese; `t(text, params)` (`src/shared/i18n.ts`) returns the English entry from `src/shared/en/*.ts` when the app language is English. The language is module state set by the 🇻🇳 VI / 🇬🇧 EN switch (saved in localStorage); hooks that memoize text read `useLanguage()` so they recompute on a switch. Game modules call `t()` for runtime text; static metadata (titles, howTo, commands, settings) is translated where it is rendered. The overlay receives the language in `OverlayState.lang`. Question banks are data and are never translated.
 
 ## Overlay flow
 

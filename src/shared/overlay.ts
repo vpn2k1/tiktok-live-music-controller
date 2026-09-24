@@ -1,6 +1,8 @@
 /** Local-only HTTP port for the OBS Browser Source overlay. */
 export const OVERLAY_PORT = 17321;
 export const OVERLAY_STREAM_PATH = '/overlay/stream';
+/** Query flag main adds for the standalone game window (shows its move/close bar). */
+export const OVERLAY_WINDOW_PARAM = 'win';
 
 export type OverlayWidget = 'alerts' | 'game' | 'leaderboard' | 'music';
 
@@ -28,12 +30,13 @@ export const STAGE_POSITIONS = [
 
 export type StagePosition = (typeof STAGE_POSITIONS)[number];
 
-/** Column width as a fraction of the frame's shorter side. */
+/** Column width as a fraction of the frame's shorter side; `full` fills the whole (safe) frame. */
 export const STAGE_SIZES = {
   s: { label: 'Nhỏ', fraction: 0.34 },
   m: { label: 'Vừa', fraction: 0.5 },
   l: { label: 'Lớn', fraction: 0.68 },
-  xl: { label: 'Rất lớn', fraction: 0.9 }
+  xl: { label: 'Rất lớn', fraction: 0.9 },
+  full: { label: 'Toàn màn', fraction: 1 }
 } as const;
 
 export type StageSize = keyof typeof STAGE_SIZES;
@@ -170,5 +173,58 @@ export function stagePadding(config: Pick<OverlayConfig, 'width' | 'height' | 's
 export function stageWidth(config: Pick<OverlayConfig, 'width' | 'height' | 'size' | 'safeArea'>): number {
   const padding = stagePadding(config);
   const available = config.width - padding.left - padding.right;
+  if (config.size === 'full') return Math.max(120, available);
   return Math.max(120, Math.min(available, Math.min(config.width, config.height) * STAGE_SIZES[config.size].fraction));
+}
+
+/** Smallest design height a full-screen stage gets; wide frames zoom down to keep it. */
+export const FULL_DESIGN_HEIGHT = 560;
+/** Design width from which the full-screen stage puts side widgets in a right column. */
+export const FULL_WIDE_FROM = 900;
+
+/**
+ * Full-screen stage: fills the padded frame. Zoom follows the width (like the
+ * other sizes) unless the frame is too short, so landscape frames get a wide
+ * design canvas instead of tiny rows.
+ */
+export function fullStage(config: Pick<OverlayConfig, 'width' | 'height' | 'safeArea'>): {
+  width: number;
+  height: number;
+  zoom: number;
+  designWidth: number;
+  designHeight: number;
+  wide: boolean;
+} {
+  const padding = stagePadding(config);
+  const width = Math.max(120, config.width - padding.left - padding.right);
+  const height = Math.max(120, config.height - padding.top - padding.bottom);
+  const zoom = Math.min(width / STAGE_BASE_WIDTH, height / FULL_DESIGN_HEIGHT);
+  const designWidth = width / zoom;
+  return { width, height, zoom, designWidth, designHeight: height / zoom, wide: designWidth >= FULL_WIDE_FROM };
+}
+
+/**
+ * Clicks in the standalone game window (pick a game in the list, back to the
+ * list). The window has no preload, so the page reports a click by changing
+ * its own URL hash; main reads it from `did-navigate-in-page` and accepts only
+ * these whitelisted actions. `n` makes repeated clicks distinct.
+ */
+export type OverlayWindowAction = { type: 'menu' } | { type: 'pick'; index: number };
+
+export function windowActionHash(action: OverlayWindowAction, n: number): string {
+  const name = action.type === 'pick' ? `pick-${action.index}` : 'menu';
+  return `#act=${name}.${Math.abs(Math.trunc(n)) % 1e15}`;
+}
+
+/** The action in an overlay URL's hash, or null (anything else is ignored). */
+export function parseWindowAction(url: string): OverlayWindowAction | null {
+  let hash = '';
+  try {
+    hash = new URL(url).hash;
+  } catch {
+    return null;
+  }
+  const match = /^#act=(menu|pick-([1-9]\d?))\.\d{1,15}$/.exec(hash);
+  if (!match) return null;
+  return match[2] ? { type: 'pick', index: Number(match[2]) } : { type: 'menu' };
 }

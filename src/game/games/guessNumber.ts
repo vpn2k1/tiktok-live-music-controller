@@ -1,3 +1,4 @@
+import { t } from '../../shared/i18n';
 import { chatTest, commandArgument, view, type GameDefinition } from '../types';
 
 export interface GuessRound {
@@ -56,7 +57,9 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
     }
     return {
       consumed: true,
-      message: `${input.nickname} đoán ${value} → ${hint === 'up' ? 'cao hơn ⬆' : 'thấp hơn ⬇'}`,
+      message: hint === 'up'
+        ? t('{name} đoán {value} → cao hơn ⬆', { name: input.nickname, value })
+        : t('{name} đoán {value} → thấp hơn ⬇', { name: input.nickname, value }),
       effects: [{ kind: 'score', text: `${value} ${hint === 'up' ? '⬆' : '⬇'}`, user: input.nickname }],
       state: {
         ...state,
@@ -71,30 +74,30 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
     if (state.winner) {
       return {
         state,
-        message: `🎉 ${state.winner.nickname} đoán trúng số ${state.secret}!`,
+        message: t('🎉 {name} đoán trúng số {n}!', { name: state.winner.nickname, n: state.secret }),
         awards: [{ ...state.winner, points: config.points }]
       };
     }
-    return { state, message: `Hết giờ! Số bí mật là ${state.secret}.`, awards: [] };
+    return { state, message: t('Hết giờ! Số bí mật là {n}.', { n: state.secret }), awards: [] };
   },
 
   testActions(state) {
     const middle = Math.floor((state.low + state.high) / 2);
     return [
-      chatTest(`Đoán ${middle}`, String(middle), 3),
-      chatTest(`Đoán ${state.low}`, String(state.low)),
-      chatTest('Đoán trúng', String(state.secret), 0.2)
+      chatTest(t('Đoán {n}', { n: middle }), String(middle), 3),
+      chatTest(t('Đoán {n}', { n: state.low }), String(state.low)),
+      chatTest(t('Đoán trúng'), String(state.secret), 0.2)
     ];
   },
 
   view(state) {
     return view({
       headline: state.winner ? String(state.secret) : `${state.low} – ${state.high}`,
-      hint: `Đoán số bí mật từ 1 đến ${state.max}`,
+      hint: t('Đoán số bí mật từ 1 đến {max}', { max: state.max }),
       rows: [...state.guesses].reverse().map((guess) => ({
         label: `${guess.nickname}: ${guess.value}`,
         avatar: guess.nickname,
-        value: guess.hint === 'hit' ? '🎯 Trúng' : guess.hint === 'up' ? '⬆ Cao hơn' : '⬇ Thấp hơn',
+        value: guess.hint === 'hit' ? t('🎯 Trúng') : guess.hint === 'up' ? t('⬆ Cao hơn') : t('⬇ Thấp hơn'),
         highlight: guess.hint === 'hit'
       }))
     });

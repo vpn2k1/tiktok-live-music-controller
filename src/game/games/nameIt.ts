@@ -1,6 +1,8 @@
+import { t } from '../../shared/i18n';
 import { CATEGORY_BANK } from '../content/english';
 import type { PointAward } from '../engine';
 import { aliases, isEnglishAttempt, matchesAlias, normalizeEnglish } from '../english';
+import { checkBankLines } from '../bankFile';
 import { chatTest, commandArgument, pickUnasked, view, type GameDefinition } from '../types';
 
 export interface NameItCategory {
@@ -45,12 +47,30 @@ export const nameItGame: GameDefinition<NameItRound, NameItConfig> = {
   defaultConfig: { seconds: 120, bank: CATEGORY_BANK },
   settings: [
     { key: 'seconds', label: 'Thời gian (giây)', type: 'number', min: 20, max: 600 },
-    { key: 'bank', label: 'Chủ đề', type: 'textarea', maxLength: 20_000, hint: 'Mỗi dòng: Chủ đề | đáp án[/từ khác] | … (2–12 đáp án).' }
+    {
+      key: 'bank',
+      label: 'Chủ đề',
+      type: 'textarea',
+      maxLength: 500_000,
+      hint: 'Mỗi dòng: Chủ đề | đáp án[/từ khác] | … (2–12 đáp án). Nhập được file .txt / .csv (Excel, Google Sheets).',
+      sample: [
+        '# Mẫu Name It — mỗi dòng 1 chủ đề với 2–12 đáp án tiếng Anh:',
+        '# Chủ đề | đáp án 1 | đáp án 2[/cách viết khác] | …',
+        '# - Excel / Google Sheets: cột A = chủ đề, các cột sau = đáp án, tải xuống .csv rồi nhập.',
+        '# - Dòng bắt đầu bằng # là ghi chú, app bỏ qua. Lưu file dạng UTF-8.',
+        'Fruits 🍎 | apple | banana | orange | mango | grape',
+        'Pets 🐶 | dog | cat | rabbit | hamster | fish | parrot'
+      ].join('\n')
+    }
   ],
+
+  checkBank(key, text) {
+    return key === 'bank' ? checkBankLines(text, (line) => parseCategories(line).length === 1) : null;
+  },
 
   start(config, ctx) {
     const categories = parseCategories(config.bank);
-    if (!categories.length) return { error: 'Không có chủ đề hợp lệ.' };
+    if (!categories.length) return { error: t('Không có chủ đề hợp lệ.') };
     const { index, asked } = pickUnasked(categories.length, ctx.previous?.asked ?? [], ctx.random);
     return {
       state: { category: categories[index] as NameItCategory, found: {}, revealed: false, asked },
@@ -71,7 +91,7 @@ export const nameItGame: GameDefinition<NameItRound, NameItConfig> = {
     return {
       consumed: true,
       finish: Object.keys(found).length === state.category.slots.length,
-      message: `${input.nickname} tìm ra “${state.category.slots[slot]?.label}”`,
+      message: t('{name} tìm ra “{answer}”', { name: input.nickname, answer: state.category.slots[slot]?.label ?? '' }),
       effects: [{ kind: 'correct', text: state.category.slots[slot]?.label, user: input.nickname }],
       state: { ...state, found }
     };
@@ -87,15 +107,15 @@ export const nameItGame: GameDefinition<NameItRound, NameItConfig> = {
     return {
       state: { ...state, revealed: true },
       awards: [...totals.values()],
-      message: `Tìm được ${count}/${state.category.slots.length} đáp án${count === state.category.slots.length ? ' 🎉' : ''}.`
+      message: t('Tìm được {count}/{total} đáp án{party}.', { count, total: state.category.slots.length, party: count === state.category.slots.length ? ' 🎉' : '' })
     };
   },
 
   testActions(state) {
     const missing = state.category.slots.find((_, index) => !state.found[index]);
     return [
-      ...(missing ? [chatTest(`Đáp án: ${missing.label}`, missing.label, 2)] : []),
-      chatTest('Trả lời sai', 'spaceship', 2)
+      ...(missing ? [chatTest(t('Đáp án: {answer}', { answer: missing.label }), missing.label, 2)] : []),
+      chatTest(t('Trả lời sai'), 'spaceship', 2)
     ];
   },
 
@@ -104,7 +124,7 @@ export const nameItGame: GameDefinition<NameItRound, NameItConfig> = {
     const count = Object.keys(state.found).length;
     return view({
       headline: state.category.name,
-      hint: state.revealed ? null : `Comment từ tiếng Anh • Đã tìm ${count}/${total}`,
+      hint: state.revealed ? null : t('Comment từ tiếng Anh • Đã tìm {count}/{total}', { count, total }),
       rows: state.category.slots.map((slot, index) => {
         const finder = state.found[index];
         return {

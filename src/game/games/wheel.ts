@@ -1,3 +1,4 @@
+import { t } from '../../shared/i18n';
 import type { PointAward } from '../engine';
 import { chatTest, commandArgument, giftTest, view, type GameDefinition, type GameContext } from '../types';
 
@@ -81,8 +82,9 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
   ],
 
   start(config) {
-    const segments = parseChallenges(config.challenges);
-    if (segments.length < 2) return { error: 'Vòng quay cần ít nhất 2 ô thử thách.' };
+    // Default challenges follow the app language; the host's own lines have no entry and stay as typed.
+    const segments = parseChallenges(config.challenges).map((challenge) => t(challenge));
+    if (segments.length < 2) return { error: t('Vòng quay cần ít nhất 2 ô thử thách.') };
     return {
       state: { segments, queue: [], spin: null, landed: null, restUntil: 0, spinCount: 0, results: [], spinners: {} },
       durationMs: null
@@ -106,7 +108,7 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
 
     const queued = { ...state, queue: [...state.queue, ...Array.from({ length: spins }, () => ({ user: input.user, nickname: input.nickname }))] };
     const next = startNextSpin(queued, config, ctx);
-    return { state: next, consumed: input.kind === 'chat', message: next.spin && next.spin !== state.spin ? `🎡 ${input.nickname} đang quay…` : undefined };
+    return { state: next, consumed: input.kind === 'chat', message: next.spin && next.spin !== state.spin ? t('🎡 {name} đang quay…', { name: input.nickname }) : undefined };
   },
 
   tick(state, config, ctx) {
@@ -128,7 +130,7 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
       };
     }
     const next = startNextSpin(state, config, ctx);
-    return next === state ? null : { state: next, consumed: false, message: `🎡 ${next.spin?.nickname ?? ''} đang quay…` };
+    return next === state ? null : { state: next, consumed: false, message: t('🎡 {name} đang quay…', { name: next.spin?.nickname ?? '' }) };
   },
 
   finish(rawState) {
@@ -149,7 +151,7 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
       nickname: entry.nickname,
       points: entry.spins
     }));
-    return { state: { ...state, queue: [] }, awards, message: `Đã quay ${state.spinCount} lần.` };
+    return { state: { ...state, queue: [] }, awards, message: t('Đã quay {n} lần.', { n: state.spinCount }) };
   },
 
   testActions(_state, config) {
@@ -158,7 +160,8 @@ export const wheelGame: GameDefinition<WheelRound, WheelConfig> = {
 
   view(state, config) {
     return view({
-      hint: `Tặng ${config.giftName || 'gift bất kỳ'} để quay${state.queue.length ? ` • Hàng chờ: ${state.queue.length}` : ''}`,
+      hint: t('Tặng {gift} để quay', { gift: config.giftName || t('gift bất kỳ') })
+        + (state.queue.length ? ` • ${t('Hàng chờ: {n}', { n: state.queue.length })}` : ''),
       wheel: {
         segments: state.segments,
         spinId: state.spinCount,

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- TikLiveVPN app icon. Source for build/icon.png/.icns/.ico: run `npm run icons` after editing. -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c4b0ff"/>
+      <stop offset=".42" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#4c1d95"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".62" r=".5">
+      <stop offset="0" stop-color="#f0abfc" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#f0abfc" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="pad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e4dcff"/>
+    </linearGradient>
+    <linearGradient id="live" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff7a93"/>
+      <stop offset=".5" stop-color="#f43f5e"/>
+      <stop offset="1" stop-color="#be123c"/>
+    </linearGradient>
+    <clipPath id="plateClip"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+  </defs>
+
+  <!-- Plate: candy button like the app's panels (ink outline, drop edge, gloss). -->
+  <rect x="100" y="118" width="824" height="824" rx="186" fill="#120c2e"/>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#plate)"/>
+  <g clip-path="url(#plateClip)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#glow)"/>
+    <path d="M100 100 H924 V420 C760 470 264 470 100 420 Z" fill="url(#gloss)"/>
+  </g>
+  <rect x="109" y="109" width="806" height="806" rx="178" fill="none" stroke="#120c2e" stroke-width="18"/>
+
+  <!-- Sparkles. -->
+  <g fill="#ffd23f" stroke="#120c2e" stroke-width="8" stroke-linejoin="round">
+    <path d="M800 232 L818 280 L866 298 L818 316 L800 364 L782 316 L734 298 L782 280 Z"/>
+    <path d="M226 330 L236 356 L262 366 L236 376 L226 402 L216 376 L190 366 L216 356 Z"/>
+  </g>
+
+  <!-- Gamepad: ink outline layer under a white body (one clean silhouette). -->
+  <g fill="#120c2e">
+    <rect x="236" y="452" width="552" height="250" rx="125"/>
+    <circle cx="322" cy="664" r="126"/>
+    <circle cx="702" cy="664" r="126"/>
+  </g>
+  <g fill="#3b2a8f">
+    <rect x="254" y="486" width="516" height="214" rx="107"/>
+    <circle cx="322" cy="672" r="108"/>
+    <circle cx="702" cy="672" r="108"/>
+  </g>
+  <g fill="url(#pad)">
+    <rect x="254" y="470" width="516" height="214" rx="107"/>
+    <circle cx="322" cy="656" r="108"/>
+    <circle cx="702" cy="656" r="108"/>
+  </g>
+  <!-- D-pad. -->
+  <g fill="#4c1d95">
+    <rect x="300" y="548" width="44" height="132" rx="12"/>
+    <rect x="256" y="592" width="132" height="44" rx="12"/>
+  </g>
+  <!-- Face buttons. -->
+  <g stroke="#120c2e" stroke-width="7">
+    <circle cx="702" cy="560" r="28" fill="#ffd23f"/>
+    <circle cx="702" cy="668" r="28" fill="#34d399"/>
+    <circle cx="648" cy="614" r="28" fill="#38bdf8"/>
+    <circle cx="756" cy="614" r="28" fill="#f472b6"/>
+  </g>
+  <!-- Center lights. -->
+  <rect x="470" y="596" width="84" height="28" rx="14" fill="#c4b5fd"/>
+
+  <!-- LIVE badge. -->
+  <rect x="330" y="236" width="364" height="140" rx="70" fill="#120c2e" transform="translate(0 12)"/>
+  <rect x="330" y="236" width="364" height="140" rx="70" fill="url(#live)" stroke="#120c2e" stroke-width="14"/>
+  <path d="M362 262 H662 C640 286 384 286 362 262 Z" fill="#fff" opacity=".28"/>
+  <circle cx="392" cy="306" r="22" fill="#fff"/>
+  <text x="560" y="336" text-anchor="middle" font-family="'Arial Black', 'Helvetica Neue', Arial, sans-serif" font-weight="900" font-size="84" fill="#fff" stroke="#120c2e" stroke-width="6" paint-order="stroke" letter-spacing="3">LIVE</text>
+</svg>

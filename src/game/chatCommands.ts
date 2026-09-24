@@ -27,6 +27,7 @@ export const HOST_ONLY: ReadonlySet<GlobalCommand['kind']> = new Set(['games', '
 export const GLOBAL_COMMAND_HELP = [
   { usage: '!help', description: 'Xem cách chơi game đang chạy', host: false },
   { usage: '!rank', description: 'Xem điểm và hạng của mình', host: false },
+  { usage: '!doigame', description: 'Bỏ phiếu đổi game (streamer/mod: đổi ngay)', host: false },
   { usage: '!start', description: 'Bắt đầu game đang chọn', host: true },
   { usage: '!start quiz', description: 'Chọn và bắt đầu game theo tên', host: true },
   { usage: '!stop', description: 'Chốt kết quả vòng đang chạy', host: true },

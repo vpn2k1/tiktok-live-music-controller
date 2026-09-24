@@ -2,18 +2,19 @@
 // Unit tests for the pure game modules. Run with `npm test`.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ENGLISH_QUIZ_BANK, CATEGORY_BANK, VOCAB_BANK } from '../src/game/content/english';
+import { ENGLISH_QUIZ_BANK, CATEGORY_BANK, EMOJI_BANK, SENTENCE_BANK, VOCAB_BANK } from '../src/game/content/english';
 import { addPoints, clearRound, CommandRateLimiter, createGameState, endRound, startRound, topScores } from '../src/game/engine';
 import { BUILTIN_ENGLISH_WORDS, buildEnglishDictionary, isEnglishAttempt, looksLikeEnglishWord, normalizeEnglish } from '../src/game/english';
 import { likePoints, normalizeFeatures } from '../src/game/features';
-import { scrambleWord, shuffleSentence } from '../src/game/games/answerGames';
+import { emojiItem, parseBank, scrambleWord, sentenceItem, shuffleSentence, vocabItem } from '../src/game/games/answerGames';
 import { maskWord, parseHangmanBank } from '../src/game/games/hangman';
 import { parseCategories } from '../src/game/games/nameIt';
 import { DEFAULT_QUESTIONS, parseQuestions } from '../src/game/games/quiz';
+import { gameNames } from '../src/game/chatCommands';
 import { GAMES, getGame, normalizeConfig } from '../src/game/registry';
 import { commandArgument } from '../src/game/types';
 import { BUILTIN_WORDS, buildDictionary, isVietnameseSyllable, parseDictionary, twoSyllables } from '../src/game/words';
-import { DEFAULT_OVERLAY_CONFIG, normalizeOverlayConfig, overlayConfigQuery, parseOverlayConfig, presetFor, stagePadding, stageWidth } from '../src/shared/overlay';
+import { DEFAULT_OVERLAY_CONFIG, FULL_DESIGN_HEIGHT, fullStage, normalizeOverlayConfig, overlayConfigQuery, parseOverlayConfig, presetFor, stagePadding, stageWidth } from '../src/shared/overlay';
 
 const dictionary = buildDictionary([]);
 const englishDictionary = buildEnglishDictionary([]);
@@ -38,9 +39,17 @@ function play(id: string, config: Record<string, unknown> = {}, inputs: any[] = 
   for (const input of inputs) {
     const r = g.handle(state, input, c, ctx(2000));
     results.push(r);
-    if (r) state = r.state;
+    // Like the controller: commit, then take the new state.
+    if (r) { r.commit?.(); state = r.state; }
   }
   return { g, c, state, results, finish: () => g.finish(state, c, ctx()) };
+}
+
+/** Runs the round deadline step (series games) like the controller does. */
+function step(g: any, state: any, c: any, now: number) {
+  const r = g.advance(state, c, ctx(now));
+  r?.commit?.();
+  return r;
 }
 
 test('vietnamese words', () => {
@@ -52,28 +61,19 @@ test('vietnamese words', () => {
 });
 
 test('registry and config normalization', () => {
-  assert.equal(GAMES.length, 17);
-  assert.equal(new Set(GAMES.map((g) => g.id)).size, 17);
+  assert.equal(GAMES.length, 35);
+  assert.equal(new Set(GAMES.map((g) => g.id)).size, 35);
+  // Every `!start <name>` name must point to exactly one game.
+  const names = GAMES.flatMap((g) => gameNames(g).map((name) => [name, g.id] as const));
+  for (const [name, id] of names) assert.deepEqual([...new Set(names.filter(([other]) => other === name).map(([, owner]) => owner))], [id], `name "${name}" is shared`);
   const quiz = game('quiz');
-  assert.equal(normalizeConfig(quiz, { seconds: 9999 }).seconds, 120);
-  assert.equal(normalizeConfig(quiz, { seconds: 'abc' }).seconds, 20);
+  assert.equal(normalizeConfig(quiz, { seconds: 9999 }).seconds, 300);
+  assert.equal(normalizeConfig(quiz, { seconds: 'abc' }).seconds, 15);
   assert.equal(normalizeConfig(game('race'), { icon: '<img>' }).icon, '🦆');
   for (const g of GAMES) {
     for (const f of g.settings) assert.ok(f.key in g.defaultConfig, `${g.id}.${f.key} missing default`);
     assert.ok(g.commands.length >= 1, `${g.id} lacks commands`);
   }
-});
-
-test('vote', () => {
-  const { state, results, finish } = play('vote', {}, [chat('u1', '1'), chat('u2', '2'), chat('u1', '2'), chat('u3', '9'), chat('u4', 'hi')]);
-  assert.equal(results[3].consumed, true);
-  assert.equal(results[4], null);
-  assert.equal(Object.keys(state.ballots).length, 2);
-  const f = finish();
-  assert.equal(f.state.winner, 1);
-  assert.ok(f.playTrackId);
-  assert.deepEqual(f.awards.map((a: any) => a.points), [3, 3]);
-  assert.ok('error' in game('vote').start({ seconds: 30 }, { ...startCtx(), playlist: tracks.slice(0, 1) }));
 });
 
 test('boss', () => {
@@ -119,18 +119,59 @@ test('guess number', () => {
 });
 
 test('quiz', () => {
-  assert.equal(parseQuestions(DEFAULT_QUESTIONS).length, 20);
+  assert.ok(parseQuestions(DEFAULT_QUESTIONS).length >= 100);
   assert.equal(parseQuestions('Q? | x | y | Z\nbad\nQ3 | a | | B').length, 0);
-  const { state, results, finish, g, c } = play('quiz', { questions: 'Q1? | a | b | c | d | C' }, [chat('u1', 'c'), chat('u2', 'A'), chat('u1', 'a'), chat('u3', 'C'), chat('u4', 'hello')]);
-  assert.equal(results[2].state, results[1].state);
+  // Started at t=1000, answers at t=2000 → 1 s of a 10 s question = 95 of 100 points.
+  const { state, results, finish, g, c } = play('quiz', { questions: 'Q1? | a | b | c | d | C', count: 1, seconds: 10 }, [chat('u1', 'c'), chat('u2', 'A'), chat('u1', 'a'), chat('u3', 'C'), chat('u4', 'hello')]);
+  assert.equal(results[2].state, results[1].state, 'first answer is final');
   assert.equal(results[4], null);
-  assert.equal(g.view(state, c).rows[0].value, undefined);
-  assert.deepEqual(finish().awards.map((a: any) => [a.user, a.points]), [['u1', 3], ['u3', 2]]);
-  const two = normalizeConfig(g, { questions: 'Q1? | a | b | A\nQ2? | a | b | B' });
+  assert.equal(g.view(state, c).rows[0].value, undefined, 'counts hidden while asking');
+  assert.deepEqual(finish().awards.map((a: any) => [a.user, a.points]), [['u1', 95], ['u3', 95]]);
+  const two = normalizeConfig(g, { questions: 'Q1? | a | b | A\nQ2? | a | b | B', count: 1 });
   const first = g.start(two, startCtx());
   const second = g.start(two, startCtx(first.state));
-  assert.notEqual(second.state.questionIndex, first.state.questionIndex);
+  assert.notEqual(second.state.items[0].question, first.state.items[0].question);
   assert.equal(g.start(two, startCtx(second.state)).state.asked.length, 1);
+});
+
+test('quiz series: ask → reveal → next → final ranking', () => {
+  const bank = 'Q1? | a | b | A\nQ2? | a | b | B\nQ3? | a | b | A';
+  const { state, g, c } = play('quiz', { questions: bank, count: 2, seconds: 10, maxPoints: 100, reveal: 3 }, []);
+  assert.equal(state.items.length, 2);
+  const correct = (s: any) => 'AB'[s.items[s.index].correct] as string;
+  const wrong = (s: any) => 'AB'[1 - s.items[s.index].correct] as string;
+  // Question 1: fast answers score more.
+  let s = state;
+  for (const [user, text, now] of [['fast', correct(s), 1500], ['slow', correct(s), 10_000], ['bad', wrong(s), 1200]] as const) {
+    const r = g.handle(s, chat(user, text), c, ctx(now));
+    r.commit?.();
+    s = r.state;
+  }
+  let r = step(g, s, c, 11_000);
+  assert.equal(r.state.stage, 'reveal');
+  assert.equal(r.endsAt, 14_000);
+  assert.deepEqual(r.awards.map((a: any) => [a.user, a.points]), [['fast', 98], ['slow', 55]]);
+  assert.equal(g.view(r.state, c).rows.find((row: any) => row.highlight)?.value, '2');
+  assert.match(g.view(r.state, c).hint, /FAST 0\.5s • 2\/3 người đúng/);
+  // Answers during the reveal are ignored.
+  assert.equal(g.handle(r.state, chat('late', correct(s)), c, ctx(12_000)), null);
+  // Question 2.
+  r = step(g, r.state, c, 14_000);
+  assert.equal(r.state.stage, 'ask');
+  assert.equal(r.state.index, 1);
+  assert.equal(r.endsAt, 24_000);
+  s = r.state;
+  const answer = g.handle(s, chat('slow', correct(s)), c, ctx(14_000));
+  answer.commit();
+  r = step(g, answer.state, c, 24_000);
+  assert.deepEqual(r.awards, [{ user: 'slow', nickname: 'SLOW', points: 100 }]);
+  // No more questions: the deadline finishes the round with the total ranking.
+  assert.equal(step(g, r.state, c, 27_000), null);
+  const end = g.finish(r.state, c, ctx(27_000));
+  assert.deepEqual(end.awards, [], 'already awarded per question');
+  assert.deepEqual(g.view(end.state, c).rows.map((row: any) => [row.label, row.value]), [['SLOW', '155đ'], ['FAST', '98đ']]);
+  assert.match(end.message, /Tổng kết 2 câu: 🥇 SLOW 155đ · 🥈 FAST 98đ/);
+  assert.equal(end.effects[0].kind, 'win');
 });
 
 test('fastest finger', () => {
@@ -194,7 +235,7 @@ test('engine, features, overlay config', () => {
   s = addPoints(endRound(s, 'done', { x: 2 }), [{ user: 'u', nickname: 'U', points: 2 }]);
   assert.deepEqual(s.memory.wheel, { x: 2 });
   assert.equal(topScores(s)[0]?.points, 2);
-  assert.equal(clearRound(s).scores.u?.points, 2);
+  assert.equal(clearRound(s).scoreboard.get('u')?.points, 2);
   const limiter = new CommandRateLimiter();
   assert.equal(limiter.allow('x', 2000, 0), true);
   assert.equal(limiter.allow('x', 2000, 1000), false);
@@ -223,6 +264,18 @@ test('overlay frame config', () => {
   assert.ok(pad.bottom > pad.top && pad.right > pad.left);
   assert.ok(stageWidth(portrait) <= 1080 - pad.left - pad.right);
   assert.ok(stageWidth({ ...portrait, size: 's' }) < stageWidth({ ...portrait, size: 'l' }));
+
+  // Full screen fills the padded frame; landscape zooms by height and goes wide.
+  assert.equal(parseOverlayConfig('?w=1080&h=1920&size=full').size, 'full');
+  assert.equal(stageWidth({ ...portrait, size: 'full' }), 1080 - pad.left - pad.right);
+  const tall = fullStage({ width: 1080, height: 1920, safeArea: false });
+  assert.equal(tall.wide, false);
+  assert.ok(Math.abs(tall.designWidth - 460) < 1e-9);
+  assert.ok(Math.abs(tall.designHeight * tall.zoom - tall.height) < 1e-9);
+  const landscape = fullStage({ width: 1920, height: 1080, safeArea: false });
+  assert.equal(landscape.wide, true);
+  assert.ok(Math.abs(landscape.designHeight - FULL_DESIGN_HEIGHT) < 1e-9);
+  assert.ok(Math.abs(landscape.designWidth * landscape.zoom - landscape.width) < 1e-9);
 });
 
 test('command argument helper', () => {
@@ -237,9 +290,28 @@ test('english helpers and banks', () => {
   assert.ok(isEnglishAttempt('Apple'));
   for (const bad of ['!next', '42', 'quả táo']) assert.ok(!isEnglishAttempt(bad), bad);
   for (const w of BUILTIN_ENGLISH_WORDS.filter((w) => w.length >= 3)) assert.ok(looksLikeEnglishWord(w, 3), w);
-  assert.equal(parseHangmanBank(VOCAB_BANK).length, 40);
-  assert.equal(parseCategories(CATEGORY_BANK).length, 9);
-  assert.equal(parseQuestions(ENGLISH_QUIZ_BANK).length, 20);
+  // Every line of every built-in bank must parse (none silently skipped).
+  const lines = (bank: string) => bank.split('\n').length;
+  assert.ok(lines(VOCAB_BANK) >= 250 && lines(EMOJI_BANK) >= 140 && lines(SENTENCE_BANK) >= 140 && lines(ENGLISH_QUIZ_BANK) >= 190 && lines(DEFAULT_QUESTIONS) >= 290 && lines(CATEGORY_BANK) >= 40);
+  assert.equal(parseHangmanBank(VOCAB_BANK).length, lines(VOCAB_BANK));
+  assert.equal(parseBank(VOCAB_BANK, vocabItem).length, lines(VOCAB_BANK));
+  assert.equal(parseBank(EMOJI_BANK, emojiItem).length, lines(EMOJI_BANK));
+  assert.equal(parseBank(SENTENCE_BANK, sentenceItem).length, lines(SENTENCE_BANK));
+  assert.equal(parseCategories(CATEGORY_BANK).length, lines(CATEGORY_BANK));
+  // A default bank longer than its field would be cut silently by normalizeConfig.
+  for (const g of GAMES) {
+    for (const field of g.settings.filter((f: any) => f.type === 'textarea')) {
+      const text = String(g.defaultConfig[field.key]);
+      assert.ok(text.length <= (field.maxLength ?? 200), `${g.id}.${field.key}: ${text.length} > ${field.maxLength}`);
+      assert.equal(normalizeConfig(g, {})[field.key], text);
+    }
+  }
+  assert.equal(parseQuestions(ENGLISH_QUIZ_BANK).length, lines(ENGLISH_QUIZ_BANK));
+  assert.equal(parseQuestions(DEFAULT_QUESTIONS).length, lines(DEFAULT_QUESTIONS));
+  for (const bank of [VOCAB_BANK, EMOJI_BANK, SENTENCE_BANK, ENGLISH_QUIZ_BANK, DEFAULT_QUESTIONS]) {
+    const keys = bank.split('\n').map((line) => line.toLowerCase());
+    assert.equal(new Set(keys).size, keys.length, 'duplicate bank line');
+  }
   const scrambled = scrambleWord('apple', random).replace(/ /g, '');
   assert.notEqual(scrambled, 'APPLE');
   assert.equal([...scrambled].sort().join(''), 'AELPP');
@@ -247,27 +319,50 @@ test('english helpers and banks', () => {
 });
 
 test('english answer games', () => {
-  const un = play('unscramble', { bank: 'bicycle/bike | xe đạp' }, [chat('a', '!song x'), chat('a', 'bicycel'), chat('b', 'BIKE')]);
+  const un = play('unscramble', { bank: 'bicycle/bike | xe đạp', scoring: 'first', seconds: 10 }, [chat('a', '!song x'), chat('a', 'bicycel'), chat('b', 'BIKE')]);
   assert.equal(un.results[0], null);
-  assert.equal(un.results[2].finish, true);
-  const tr = play('translate', { bank: 'airplane/plane | máy bay' }, [chat('a', 'plane'), chat('b', 'Airplane'), chat('a', 'airplane'), chat('c', 'car')]);
-  assert.deepEqual(tr.finish().awards.map((a: any) => [a.user, a.points]), [['a', 3], ['b', 2]]);
-  assert.equal(play('sentenceBuilder', { bank: "We had dinner at seven o'clock | x", scoring: 'first' }, [chat('a', 'we HAD dinner at seven o’clock.')]).results[0].finish, true);
-  assert.equal(play('emojiGuess', { bank: '⭐🎬 | movie star/film star | x' }, [chat('a', 'Film Star')]).results[0].finish, true);
-  assert.equal(play('unscramble', { bank: 'apple | táo' }, [chat('a', '!ans apple')]).results[0].finish, true);
+  assert.equal(un.results[1], null, 'wrong answers are free');
+  assert.equal(un.results[2].endsAt, 2000, '"first" closes the puzzle now');
+  const tr = play('translate', { bank: 'airplane/plane | máy bay', seconds: 10 }, [chat('a', 'plane'), chat('b', 'Airplane'), chat('a', 'airplane'), chat('c', 'car')]);
+  assert.equal(tr.results[0].endsAt, undefined, '"all" keeps the puzzle open');
+  assert.equal(tr.results[2], null, 'one correct answer per viewer');
+  assert.deepEqual(tr.finish().awards.map((a: any) => [a.user, a.points]), [['a', 95], ['b', 95]]);
+  assert.equal(play('sentenceBuilder', { bank: "We had dinner at seven o'clock | x", scoring: 'first' }, [chat('a', 'we HAD dinner at seven o’clock.')]).results[0].consumed, true);
+  assert.equal(play('emojiGuess', { bank: '⭐🎬 | movie star/film star | x' }, [chat('a', 'Film Star')]).results[0].consumed, true);
+  assert.equal(play('unscramble', { bank: 'apple | táo' }, [chat('a', '!ans apple')]).results[0].consumed, true);
+  // Series: the reveal shows the fastest, then the next puzzle gets a fresh presentation.
+  const two = play('unscramble', { bank: 'apple | táo\nmango | xoài', count: 2, seconds: 10 }, [chat('a', 'x')]);
+  const answer = two.g.handle(two.state, chat('z', two.state.items[0].display), two.c, ctx(1200));
+  answer.commit();
+  let r = step(two.g, answer.state, two.c, 11_000);
+  assert.deepEqual(r.awards, [{ user: 'z', nickname: 'Z', points: 99 }]);
+  assert.equal(two.g.view(r.state, two.c).rows[0].value, '+99 · 0.2s');
+  r = step(two.g, r.state, two.c, 15_000);
+  assert.equal(r.state.index, 1);
+  assert.equal([...r.state.shown.replace(/ /g, '')].sort().join(''), [...r.state.items[1].display.toUpperCase()].sort().join(''));
+  assert.equal(r.state.book.total, 0, 'fresh answer book');
 });
 
 test('hangman', () => {
-  const h = play('hangman', { bank: 'apple | quả táo', maxWrong: 3, points: 3 }, [chat('a', 'P'), chat('b', 'p'), chat('b', 'z'), chat('c', 'mango'), chat('c', 'hello there'), chat('d', 'APPLE')]);
+  // 1 s into a 20 s word: solver gets 98 of 100; each revealed letter is worth 10.
+  const h = play('hangman', { bank: 'apple | quả táo', count: 1, maxWrong: 3, maxPoints: 100, seconds: 20 }, [chat('a', 'P'), chat('b', 'p'), chat('b', 'z'), chat('c', 'mango'), chat('c', 'hello there'), chat('d', 'APPLE')]);
   assert.equal(maskWord('apple', ['p']), '_ P P _ _');
   assert.equal(h.results[1].state, h.results[0].state);
   assert.equal(h.results[3].state.wrong.length, 1);
   assert.equal(h.results[4], null);
-  assert.equal(h.results[5].finish, true);
-  assert.deepEqual(h.finish().awards.map((a: any) => [a.user, a.points]), [['a', 2], ['d', 3]]);
+  assert.equal(h.results[5].endsAt, 2000, 'solved: close the word now');
+  assert.deepEqual(h.finish().awards.map((a: any) => [a.user, a.points]), [['a', 20], ['d', 98]]);
   const lose = play('hangman', { bank: 'apple | táo', maxWrong: 3 }, [chat('t', 'x'), chat('t', 'y'), chat('t', 'q')]);
-  assert.equal(lose.results[2].finish, true);
+  assert.equal(lose.results[2].endsAt, 2000, 'out of lives: close the word now');
+  assert.equal(lose.g.handle(lose.state, chat('u', 'p'), lose.c, ctx(2100)), null, 'no guesses after the word closed');
   assert.equal(play('hangman', { bank: 'apple | táo' }, [chat('a', '!guess p')]).results[0].state.guessed[0], 'p');
+  // Series: reveal, then a fresh word.
+  const series = play('hangman', { bank: 'apple | táo\nmango | xoài', count: 2, seconds: 20 }, [chat('a', 'a')]);
+  let r = step(series.g, series.state, series.c, 21_000);
+  assert.equal(r.state.stage, 'reveal');
+  assert.equal(r.awards[0].points, 10);
+  r = step(series.g, r.state, series.c, 25_000);
+  assert.deepEqual([r.state.index, r.state.guessed, r.state.wrong, r.state.solver], [1, [], [], null]);
 });
 
 test('name it', () => {
@@ -293,7 +388,6 @@ test('english word chain', () => {
 });
 
 test('chat command variants', () => {
-  assert.equal(play('vote', {}, [chat('a', '!vote 2'), chat('b', '!vote')]).state.ballots.a.choice, 1);
   const boss = play('boss', { hp: 100, chatDamage: 5 }, [chat('a', '!hit'), chat('a', 'hit'), chat('b', '!HIT')]);
   assert.equal(boss.state.hp, 90);
   assert.equal(boss.results[1], null);

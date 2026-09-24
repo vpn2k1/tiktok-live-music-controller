@@ -3,18 +3,41 @@
  * every `switchMinutes`, and lets viewers switch game early with a gift.
  * Everything here is pure; `useAutoPlay` owns the timers.
  */
+import { t } from '../shared/i18n';
+
 export type AutoPlayOrder = 'sequential' | 'random';
+
+/** A named set of games the streamer prepares before going LIVE. */
+export interface GameGroup {
+  id: string;
+  name: string;
+  /** Library order; these are the numbers viewers vote with. */
+  gameIds: string[];
+}
+
+/** What grouping needs to know about a game. */
+export interface GameInfo {
+  id: string;
+  category: string;
+}
+
+export const MAX_GROUPS = 12;
 
 export interface AutoPlaySettings {
   /** Planned LIVE length; 0 = no limit. Autoplay stops when it runs out. */
   liveMinutes: number;
+  /** When to move to the next game: after `switchMinutes`, or after `roundsPerGame` rounds. */
+  switchBy: 'time' | 'rounds';
   /** How long each game stays on before switching to the next one. */
   switchMinutes: number;
+  /** Rounds (question sets) each game plays before switching. */
+  roundsPerGame: number;
   /** Pause between two rounds of the same game. */
   roundGapSeconds: number;
   order: AutoPlayOrder;
-  /** Games in the rotation (empty = every game). */
-  gameIds: string[];
+  /** Game groups; only the active group's games are listed, voted and rotated. */
+  groups: GameGroup[];
+  activeGroupId: string;
   /** Start autoplay by itself when TikTok connects. */
   startOnConnect: boolean;
   giftSwitchEnabled: boolean;
@@ -24,30 +47,117 @@ export interface AutoPlaySettings {
   giftCount: number;
   /** Minimum time a game stays on before a gift can switch it again. */
   giftCooldownSeconds: number;
+  /** Viewers pick the next game on an overlay list (instead of the rotation order). */
+  lobbyEnabled: boolean;
+  /** Voting time. */
+  lobbySeconds: number;
+  /** Votes per gift unit in the list; 0 = gifts don't vote. */
+  lobbyGiftVotes: number;
+  /** Distinct viewers typing !doigame needed to switch game; 0 = viewers can't. */
+  switchCommandVotes: number;
 }
 
 export const DEFAULT_AUTOPLAY: AutoPlaySettings = {
   liveMinutes: 60,
+  switchBy: 'rounds',
   switchMinutes: 5,
+  roundsPerGame: 1,
   roundGapSeconds: 8,
   order: 'sequential',
-  gameIds: [],
+  // Filled from the game list by normalizeAutoPlay.
+  groups: [],
+  activeGroupId: '',
   startOnConnect: false,
   giftSwitchEnabled: true,
   giftName: 'Rose',
   giftCount: 5,
-  giftCooldownSeconds: 30
+  giftCooldownSeconds: 30,
+  lobbyEnabled: true,
+  lobbySeconds: 20,
+  lobbyGiftVotes: 5,
+  switchCommandVotes: 5
 };
 
-const NUMBER_LIMITS: Record<'liveMinutes' | 'switchMinutes' | 'roundGapSeconds' | 'giftCount' | 'giftCooldownSeconds', [number, number]> = {
+type NumberKey = 'liveMinutes' | 'switchMinutes' | 'roundsPerGame' | 'roundGapSeconds' | 'giftCount' | 'giftCooldownSeconds'
+  | 'lobbySeconds' | 'lobbyGiftVotes' | 'switchCommandVotes';
+
+const NUMBER_LIMITS: Record<NumberKey, [number, number]> = {
   liveMinutes: [0, 720],
   switchMinutes: [1, 180],
+  roundsPerGame: [1, 50],
   roundGapSeconds: [3, 300],
   giftCount: [1, 10_000],
-  giftCooldownSeconds: [0, 3600]
+  giftCooldownSeconds: [0, 3600],
+  lobbySeconds: [5, 300],
+  lobbyGiftVotes: [0, 1000],
+  switchCommandVotes: [0, 100]
 };
 
-export function normalizeAutoPlay(raw: unknown, knownIds: readonly string[]): AutoPlaySettings {
+/** Starter groups: one per category plus "all games". */
+export function defaultGroups(games: readonly GameInfo[]): GameGroup[] {
+  const ids = (category?: string) => games.filter((game) => !category || game.category === category).map((game) => game.id);
+  return [
+    { id: 'fun', name: 'Giải trí 🎉', gameIds: ids('fun') },
+    { id: 'english', name: 'Tiếng Anh 🇬🇧', gameIds: ids('english') },
+    { id: 'japanese', name: 'Tiếng Nhật 🇯🇵', gameIds: ids('japanese') },
+    { id: 'chinese', name: 'Tiếng Trung 🇨🇳', gameIds: ids('chinese') },
+    { id: 'all', name: 'Tất cả game', gameIds: ids() }
+  ].filter((group) => group.gameIds.length > 0);
+}
+
+/**
+ * Validates stored/typed groups: known games only (library order, no
+ * duplicates), no empty groups, unique ids. Old settings with a `gameIds`
+ * rotation list become a "Nhóm của tôi" group.
+ */
+export function normalizeGroups(
+  raw: unknown,
+  rawActive: unknown,
+  legacyIds: unknown,
+  games: readonly GameInfo[]
+): { groups: GameGroup[]; activeGroupId: string } {
+  const knownIds = games.map((game) => game.id);
+  const pick = (ids: unknown) => (Array.isArray(ids) ? knownIds.filter((id) => ids.includes(id)) : []);
+  const seen = new Set<string>();
+  const groups: GameGroup[] = [];
+  for (const item of Array.isArray(raw) ? raw : []) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === 'string' && /^[\w-]{1,40}$/.test(record.id) ? record.id : '';
+    // The built-in "all games" group always follows the library (new games included).
+    const gameIds = id === 'all' ? [...knownIds] : pick(record.gameIds);
+    if (!id || seen.has(id) || !gameIds.length || groups.length >= MAX_GROUPS) continue;
+    seen.add(id);
+    groups.push({ id, name: typeof record.name === 'string' ? record.name.slice(0, 40) : '', gameIds });
+  }
+  if (!groups.length) {
+    groups.push(...defaultGroups(games));
+    const legacy = pick(legacyIds);
+    if (legacy.length) {
+      groups.unshift({ id: 'mine', name: 'Nhóm của tôi', gameIds: legacy });
+      return { groups, activeGroupId: 'mine' };
+    }
+  }
+  const activeGroupId = groups.some((group) => group.id === rawActive) ? String(rawActive) : groups[0]?.id ?? '';
+  return { groups, activeGroupId };
+}
+
+/** Stored (Vietnamese) name of a new group; shown through `groupLabel`. */
+export function newGroupName(number: number): string {
+  return 'Nhóm {n}'.replace('{n}', String(number));
+}
+
+/** Display name of a group: default names are translated, custom names shown as typed. */
+export function groupLabel(group: Pick<GameGroup, 'name'> | undefined): string {
+  const name = group?.name.trim() ?? '';
+  return name ? t(name) : t('Nhóm không tên');
+}
+
+export function activeGroup(settings: AutoPlaySettings): GameGroup | undefined {
+  return settings.groups.find((group) => group.id === settings.activeGroupId);
+}
+
+export function normalizeAutoPlay(raw: unknown, games: readonly GameInfo[]): AutoPlaySettings {
   const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const result: AutoPlaySettings = { ...DEFAULT_AUTOPLAY };
   for (const [key, [min, max]] of Object.entries(NUMBER_LIMITS) as [keyof typeof NUMBER_LIMITS, [number, number]][]) {
@@ -55,17 +165,19 @@ export function normalizeAutoPlay(raw: unknown, knownIds: readonly string[]): Au
     result[key] = Number.isFinite(numeric) ? Math.min(max, Math.max(min, Math.round(numeric))) : DEFAULT_AUTOPLAY[key];
   }
   result.order = record.order === 'random' ? 'random' : 'sequential';
-  result.startOnConnect = typeof record.startOnConnect === 'boolean' ? record.startOnConnect : DEFAULT_AUTOPLAY.startOnConnect;
-  result.giftSwitchEnabled = typeof record.giftSwitchEnabled === 'boolean' ? record.giftSwitchEnabled : DEFAULT_AUTOPLAY.giftSwitchEnabled;
+  result.switchBy = record.switchBy === 'time' ? 'time' : 'rounds';
+  for (const key of ['startOnConnect', 'giftSwitchEnabled', 'lobbyEnabled'] as const) {
+    result[key] = typeof record[key] === 'boolean' ? record[key] : DEFAULT_AUTOPLAY[key];
+  }
   result.giftName = typeof record.giftName === 'string' ? record.giftName.slice(0, 60) : DEFAULT_AUTOPLAY.giftName;
-  const ids = Array.isArray(record.gameIds) ? record.gameIds : [];
-  result.gameIds = knownIds.filter((id) => ids.includes(id));
+  Object.assign(result, normalizeGroups(record.groups, record.activeGroupId, record.gameIds, games));
   return result;
 }
 
-/** The games autoplay may pick, in library order. */
+/** The active group's games (library order): what viewers see, vote and autoplay rotates. */
 export function rotation(settings: AutoPlaySettings, allIds: readonly string[]): string[] {
-  const picked = allIds.filter((id) => settings.gameIds.includes(id));
+  const ids = activeGroup(settings)?.gameIds ?? [];
+  const picked = allIds.filter((id) => ids.includes(id));
   return picked.length ? picked : [...allIds];
 }
 
@@ -102,6 +214,8 @@ export interface AutoPlaySession {
   slotEndsAt: number;
   /** When the current game last stopped running (for the gap between rounds). */
   idleSince: number | null;
+  /** Rounds of the current game finished so far ("rounds" mode). */
+  roundsPlayed: number;
   /** "LIVE is almost over" was already announced. */
   warned: boolean;
 }
@@ -113,6 +227,7 @@ export function createSession(settings: AutoPlaySettings, now: number): AutoPlay
     gameId: null,
     slotEndsAt: now,
     idleSince: null,
+    roundsPlayed: 0,
     warned: false
   };
 }
@@ -141,10 +256,13 @@ export function autoPlayStep(
     session.liveEndsAt - now <= LIVE_WARNING_MS
   ) return 'warn';
   if (session.gameId == null) return 'switch';
-  if (roundRunning) return now >= session.slotEndsAt ? 'finish' : 'none';
+  const byRounds = settings.switchBy === 'rounds';
+  // "rounds" mode never cuts a round short; "time" mode ends it when the game's time is up.
+  if (roundRunning) return !byRounds && now >= session.slotEndsAt ? 'finish' : 'none';
   const gapOver = session.idleSince == null || now - session.idleSince >= settings.roundGapSeconds * 1000;
   if (!gapOver) return 'none';
-  return now >= session.slotEndsAt ? 'switch' : 'restart';
+  const gameDone = byRounds ? session.roundsPlayed >= settings.roundsPerGame : now >= session.slotEndsAt;
+  return gameDone ? 'switch' : 'restart';
 }
 
 export interface GiftSwitchState {

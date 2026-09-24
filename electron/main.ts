@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, type OpenDialogOptions, type SaveDialogOptions } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,12 +15,19 @@ import type {
   SimulatedEventInput,
   TikTokStatus
 } from '../src/shared/types';
+import { EVENT_BATCH_MS, LiveEventBatcher, type LiveEventBatch } from '../src/shared/eventBatch';
+import { isLanguage, setLanguage, t } from '../src/shared/i18n';
+import { aiStatus, generateAi, setAiKey, setAiSettings, testAi } from './ai';
 import { publishOverlay, startOverlayServer, stopOverlayServer } from './overlay-server';
-import { closeOverlayWindow, openOverlayWindow } from './overlay-window';
+import { closeOverlayWindow, onOverlayWindowAction, onOverlayWindowChange, openOverlayWindow } from './overlay-window';
+import type { OverlayWindowAction } from '../src/shared/overlay';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+/** Unpackaged runs use Electron's own bundle; show the app icon anyway (packaged builds embed it). */
+const devIcon = app.isPackaged ? null : path.join(__dirname, '..', 'build', 'icon.png');
+const hasDevIcon = devIcon != null && fs.existsSync(devIcon);
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -138,8 +145,17 @@ function normalizeEvent(type: string, rawData: unknown = {}, simulated = false):
   return base;
 }
 
+// Events go to the renderer in batches (one IPC message + one React render per
+// EVENT_BATCH_MS) so busy rooms don't flood it; see LiveEventBatcher for overload rules.
+const eventBatcher = new LiveEventBatcher();
+
 function emitLiveEvent(type: string, data: unknown, simulated = false): void {
-  send<LiveEvent>('tiktok:event', normalizeEvent(type, data, simulated));
+  eventBatcher.push(normalizeEvent(type, data, simulated));
+}
+
+function flushLiveEvents(): void {
+  const batch = eventBatcher.flush();
+  if (batch) send<LiveEventBatch>('tiktok:events', batch);
 }
 
 async function disconnectTikTok(): Promise<boolean> {
@@ -188,7 +204,8 @@ async function connectTikTok(rawUsername: string) {
     // while staying connected; keep the "connected" status so host detection and
     // the UI don't treat the LIVE as offline.
     if (connection.isConnected) {
-      emitStatus('connected', { username, message: `Cảnh báo từ TikTok: ${errorText(error)}` });
+      // Status messages stay Vietnamese source texts; the renderer translates them (fixed prefix + detail).
+      emitStatus('connected', { username, message: 'Cảnh báo từ TikTok: {error}'.replace('{error}', () => errorText(error)) });
       return;
     }
     emitStatus('error', { username, message: errorText(error) });
@@ -236,10 +253,12 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: Math.min(1720, Math.round(area.width * 0.94)),
     height: Math.min(1100, Math.round(area.height * 0.94)),
-    minWidth: 1050,
-    minHeight: 700,
+    // The layout is responsive (styles.css); keep room for one column of panels.
+    minWidth: 420,
+    minHeight: 560,
     backgroundColor: '#0b0d12',
-    title: 'TikTok LIVE Game Controller',
+    title: 'TikLiveVPN',
+    ...(hasDevIcon && devIcon ? { icon: devIcon } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -266,6 +285,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  if (hasDevIcon && devIcon) app.dock?.setIcon(devIcon);
+  setInterval(flushLiveEvents, EVENT_BATCH_MS);
   protocol.handle('media', async (request) => {
     try {
       const url = new URL(request.url);
@@ -298,10 +319,28 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Sample bank files: the renderer only supplies the text and a suggested name;
+  // the user picks the location in a native dialog, so no path ever comes from the renderer.
+  ipcMain.handle('dialog:save-text', async (_event, rawName: unknown, rawContent: unknown): Promise<{ ok: boolean; error?: string }> => {
+    if (typeof rawContent !== 'string' || rawContent.length > 2_000_000) return { ok: false, error: 'Nội dung không hợp lệ.' };
+    const name = (typeof rawName === 'string' ? rawName : 'mau').replace(/[^\w.-]+/g, '-').replace(/^\.+/, '').slice(0, 60) || 'mau';
+    const fileName = /\.(txt|csv)$/i.test(name) ? name : `${name}.txt`;
+    const options: SaveDialogOptions = {
+      title: t('Lưu file mẫu'),
+      defaultPath: path.join(app.getPath('downloads'), fileName),
+      filters: [{ name: 'Text', extensions: ['txt', 'csv'] }]
+    };
+    const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { ok: false };
+    // UTF-8 with BOM so Excel on Windows shows Vietnamese correctly.
+    await fs.promises.writeFile(result.filePath, `\uFEFF${rawContent}`, 'utf8');
+    return { ok: true };
+  });
+
   ipcMain.handle('dialog:select-audio', async (): Promise<AudioTrack[]> => {
     const options: OpenDialogOptions = {
-      title: 'Chọn file nhạc',
-      buttonLabel: 'Thêm vào playlist',
+      title: t('Chọn file nhạc'),
+      buttonLabel: t('Thêm vào playlist'),
       properties: ['openFile', 'multiSelections'],
       filters: [
         {
@@ -329,14 +368,35 @@ app.whenReady().then(async () => {
     });
   });
 
+  // AI question generation: keys stay in main (electron/ai.ts); only the controller window may use it.
+  const fromMainWindow = (event: Electron.IpcMainInvokeEvent) => event.sender === mainWindow?.webContents;
+  const refused = { ok: false as const, code: 'bad-request' as const };
+  ipcMain.handle('ai:status', (event) => (fromMainWindow(event) ? aiStatus() : null));
+  ipcMain.handle('ai:set-key', (event, provider: unknown, key: unknown) => (fromMainWindow(event) ? setAiKey(provider, key) : refused));
+  ipcMain.handle('ai:set-settings', (event, settings: unknown) => (fromMainWindow(event) ? setAiSettings(settings) : refused));
+  ipcMain.handle('ai:test', (event, provider: unknown) => (fromMainWindow(event) ? testAi(provider) : refused));
+  ipcMain.handle('ai:generate', (event, request: unknown) => (fromMainWindow(event) ? generateAi(request) : refused));
+
   ipcMain.handle('overlay:info', () => overlayInfo);
-  ipcMain.on('overlay:update', (_event, state: unknown) => publishOverlay(state));
+  ipcMain.on('overlay:update', (event, state: unknown) => {
+    // The controller's language rides on its overlay state; main only uses it
+    // for native dialog titles. Strictly 'vi' | 'en', and only from the main window.
+    const lang = state && typeof state === 'object' ? (state as { lang?: unknown }).lang : undefined;
+    if (event.sender === mainWindow?.webContents && isLanguage(lang)) setLanguage(lang);
+    publishOverlay(state);
+  });
   ipcMain.handle('overlay:open-window', (_event, options: unknown) => {
     if (!overlayInfo.url) return { ok: false, error: overlayInfo.error ?? 'Overlay server chưa chạy.' };
     const origins = [new URL(overlayInfo.url).origin];
     if (isDev && process.env.VITE_DEV_SERVER_URL) origins.push(new URL(process.env.VITE_DEV_SERVER_URL).origin);
     return openOverlayWindow(overlayInfo.url, origins, options);
   });
+  ipcMain.handle('overlay:close-window', () => {
+    closeOverlayWindow();
+    return true;
+  });
+  onOverlayWindowChange((open) => send<boolean>('overlay:window-changed', open));
+  onOverlayWindowAction((action) => send<OverlayWindowAction>('overlay:window-action', action));
 
   ipcMain.handle('tiktok:connect', (_event, username: string) => connectTikTok(username));
   ipcMain.handle('tiktok:disconnect', () => disconnectTikTok());

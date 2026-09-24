@@ -1,15 +1,46 @@
 /* Overlay page for OBS / TikTok LIVE Studio (Browser Source or the game window). */
 :root {
-  font-family: "Nunito", "Baloo 2", Inter, ui-rounded, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Rounded "casual game" type (bundled, Vietnamese included). */
+  font-family: "Baloo 2 Variable", "Baloo 2", ui-rounded, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color: #ffffff;
   font-synthesis: none;
   --accent: #7867ff;
+  /* Game-UI palette: dark outline, gold, panel blues. */
+  --ink: #120c2e;
+  --gold: #ffd23f;
+  --gold-deep: #f59e0b;
+  /* Cartoon outline for text on busy video (works without paint-order, e.g. older OBS). */
+  --outline: 2px 2px 0 var(--ink), -2px 2px 0 var(--ink), 2px -2px 0 var(--ink), -2px -2px 0 var(--ink), 0 2px 0 var(--ink), 0 -2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink);
+  --outline-3d: var(--outline), 0 5px 0 var(--ink);
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; background: transparent; overflow: hidden; }
 
 .overlay-waiting { padding: 16px; color: rgba(255,255,255,.6); font-size: 14px; }
+
+/* ---------- Standalone game window (frameless) ---------- */
+/* The whole page drags the window; only the close button is clickable. */
+html.window-mode, html.window-mode body { -webkit-app-region: drag; user-select: none; }
+/* Sized in viewport units: the window zooms the frame, so px would shrink with it. */
+.win-button {
+  -webkit-app-region: no-drag; position: fixed; top: .5em; z-index: 100;
+  width: 1.8em; height: 1.8em; padding: 0; display: grid; place-items: center;
+  font-size: min(2.8vw, 2vh); font-weight: 900; line-height: 1; color: #fff; cursor: pointer;
+  border-radius: 50%; border: 2px solid rgba(255,255,255,.55); background: rgba(225, 29, 72, .85);
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  opacity: 0; transform: scale(.8); transition: opacity .15s ease, transform .15s ease; pointer-events: none;
+}
+/* Shown while the window is focused (clicking it to move it focuses it), hidden for capture. */
+.win-button.show { opacity: .9; transform: none; pointer-events: auto; }
+.win-close { right: .5em; }
+.win-close:hover { opacity: 1; background: #f43f5e; }
+.win-menu { left: .5em; background: rgba(124, 58, 237, .88); }
+.win-menu:hover { opacity: 1; background: #8b5cf6; }
+/* Game list in the game window: click a game tile to play it. */
+html.window-mode .ov-menu-item.pickable { -webkit-app-region: no-drag; cursor: pointer; }
+html.window-mode .ov-menu-item.pickable:hover { transform: translateY(-3px) scale(1.02); filter: brightness(1.12); box-shadow: inset 0 2px 0 rgba(255,255,255,.2), 0 7px 0 var(--ink), 0 0 0 3px var(--gold), 0 0 22px rgba(255,210,63,.45); }
+html.window-mode .ov-menu-item.pickable:active { transform: translateY(2px) scale(.99); box-shadow: inset 0 2px 0 rgba(255,255,255,.2), 0 1px 0 var(--ink), 0 0 0 3px var(--gold); }
 
 /* ---------- Layout ---------- */
 .ov-column { display: grid; gap: 14px; }
@@ -18,216 +49,504 @@ html, body { margin: 0; background: transparent; overflow: hidden; }
 .overlay.layout-canvas { position: relative; display: flex; overflow: hidden; }
 .layout-canvas .ov-stage { flex: 0 0 auto; max-height: 100%; }
 
+/* Full screen ("Toàn màn"): the game card takes all height left by the other widgets. */
+.ov-column.full { display: flex; flex-direction: column; gap: 14px; }
+.ov-column.full > .ov-slot { flex: 0 0 auto; }
+.ov-column.full > .ov-slot-game { flex: 1 1 0; min-height: 0; display: flex; }
+.ov-column.full .ov-game { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 20px 22px; }
+.ov-column.full .ov-game-header strong { font-size: 26px; }
+.ov-column.full .ov-headline { font-size: 38px; }
+.ov-column.full .ov-hint { font-size: 16px; }
+/* Lists share the card height: rows grow up to 110px, and shrink evenly when there are many. */
+.ov-column.full .ov-options { flex: 1 1 0; min-height: 0; overflow: hidden; grid-auto-rows: minmax(min-content, 110px); align-content: space-evenly; }
+.ov-column.full .ov-option { min-height: 0; }
+.ov-column.full .ov-option-label { font-size: 19px; }
+.ov-column.full .ov-option-votes { font-size: 22px; }
+.ov-column.full .ov-answers, .ov-column.full .ov-race { flex: 1; align-content: space-evenly; }
+.ov-column.full .ov-wheel { width: min(100%, 420px); margin-block: auto; }
+/* Short content (word tiles, boss, wheel) sits in the middle instead of under the header. */
+.ov-column.full .ov-game-header { margin-bottom: auto; }
+.ov-column.full .ov-game::after { content: ''; flex: 0 0 0; margin-top: auto; }
+.ov-column.full .ov-tiles { zoom: 1.35; }
+.ov-column.full.wide .ov-tiles { zoom: 1.7; }
+.ov-column.full.wide .ov-wheel { width: min(100%, 360px); }
+.ov-column.full .ov-howto { padding-top: 12px; }
+.ov-column.full .ov-howto span { font-size: 15px; }
+/* Wide frames (16:9): game on the left, other widgets in a column on the right. */
+.ov-column.full.wide { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: repeat(3, auto) 1fr; column-gap: 18px; row-gap: 14px; }
+.ov-column.full.wide > .ov-slot-game { grid-column: 1; grid-row: 1 / 5; }
+.ov-column.full.wide > .ov-slot:not(.ov-slot-game) { grid-column: 2; }
+.ov-column.full.wide > .ov-slot-game:only-child { grid-column: 1 / -1; }
+/* Wide frames are short: long lists go in two columns. */
+.ov-column.full.wide .ov-options.many { grid-template-columns: 1fr 1fr; column-gap: 28px; }
+
+/* =====================================================================
+   Game-UI theme ("casual mobile game" look): thick dark outlines, glossy
+   3D plates, candy buttons, ribbons, gold accents. Pure CSS, no images.
+   ===================================================================== */
+
 /* ---------- Cards ---------- */
 .ov-card {
   position: relative;
-  background: linear-gradient(160deg, rgba(22, 20, 44, .9), rgba(8, 10, 20, .88));
-  border: 2px solid rgba(255,255,255,.14);
-  border-radius: 20px;
-  padding: 14px 16px;
-  box-shadow: 0 14px 40px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
-  text-shadow: 0 2px 3px rgba(0,0,0,.55);
-  animation: ov-card-in .45s cubic-bezier(.2,1.4,.4,1);
+  background:
+    radial-gradient(120% 70% at 50% -12%, color-mix(in srgb, var(--accent) 38%, transparent), transparent 62%),
+    repeating-linear-gradient(135deg, rgba(255,255,255,.028) 0 14px, transparent 14px 28px),
+    linear-gradient(180deg, #2b2468 0%, #1a1545 52%, #110d2f 100%);
+  border: 3px solid var(--ink);
+  border-radius: 26px;
+  padding: 16px 18px;
+  box-shadow:
+    inset 0 0 0 3px color-mix(in srgb, var(--accent) 75%, #fff 12%),
+    inset 0 0 0 6px rgba(0,0,0,.35),
+    inset 0 10px 0 6px rgba(255,255,255,.05),
+    0 7px 0 var(--ink),
+    0 16px 28px rgba(0,0,0,.45);
+  text-shadow: var(--outline);
+  animation: ov-card-in .5s cubic-bezier(.2,1.5,.35,1);
 }
-@keyframes ov-card-in { from { transform: translateY(14px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ov-card-in { from { transform: translateY(18px) scale(.9); opacity: 0; } 60% { opacity: 1; } to { transform: none; opacity: 1; } }
 
-.ov-game { border-color: color-mix(in srgb, var(--accent) 75%, white 10%); box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 0 28px color-mix(in srgb, var(--accent) 45%, transparent), 0 16px 40px rgba(0,0,0,.5); }
-.ov-game::before {
-  content: '';
-  position: absolute; inset: 0 0 auto 0; height: 56px; border-radius: 18px 18px 0 0;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), transparent 75%);
+/* Glass highlight across the top of every card. */
+.ov-card::before {
+  content: ''; position: absolute; left: 8px; right: 8px; top: 7px; height: 38%;
+  border-radius: 20px 20px 60% 60% / 20px 20px 22px 22px;
+  background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,0));
   pointer-events: none;
 }
-.ov-game.ended { filter: saturate(.9); }
+
+.ov-game.ended { filter: saturate(.92); }
 .ov-game.shake-0 { animation: ov-shake-a .38s ease; }
 .ov-game.shake-1 { animation: ov-shake-b .38s ease; }
-@keyframes ov-shake-a { 0%,100% { transform: none; } 20% { transform: translateX(-7px) rotate(-.6deg); } 40% { transform: translateX(6px) rotate(.5deg); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
-@keyframes ov-shake-b { 0%,100% { transform: none; } 20% { transform: translateX(-7px) rotate(-.6deg); } 40% { transform: translateX(6px) rotate(.5deg); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+@keyframes ov-shake-a { 0%,100% { transform: none; } 20% { transform: translateX(-8px) rotate(-.8deg); } 40% { transform: translateX(7px) rotate(.6deg); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+@keyframes ov-shake-b { 0%,100% { transform: none; } 20% { transform: translateX(-8px) rotate(-.8deg); } 40% { transform: translateX(7px) rotate(.6deg); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
 
-.ov-game-header { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; }
-.ov-game-header strong { font-size: 22px; font-weight: 900; letter-spacing: -.01em; }
-.ov-badge { padding: 5px 12px; border-radius: 999px; background: rgba(255,255,255,.16); font-size: 13px; font-weight: 800; }
-.ov-badge.live { background: #f43f5e; animation: ov-pulse 1.2s ease-in-out infinite; }
-@keyframes ov-pulse { 50% { opacity: .65; } }
+/* Header: title on a ribbon, timer badge on the right. */
+.ov-game-header { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 54px; }
+.ov-game-header strong {
+  position: relative; overflow: hidden; max-width: 78%;
+  padding: 4px 18px 6px; border-radius: 14px;
+  font-size: 23px; font-weight: 800; line-height: 1.15; letter-spacing: .01em; white-space: nowrap; text-overflow: ellipsis;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 70%, #fff) 0 48%, var(--accent) 52% 100%);
+  border: 3px solid var(--ink);
+  box-shadow: inset 0 -4px 0 rgba(0,0,0,.25), inset 0 2px 0 rgba(255,255,255,.45), 0 4px 0 var(--ink);
+  text-shadow: var(--outline);
+}
+/* Shine sweeping over the ribbon. */
+.ov-game-header strong::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent);
+  transform: skewX(-20deg); animation: ov-sweep 3.2s ease-in-out infinite;
+}
+@keyframes ov-sweep { 0%, 55% { left: -60%; } 100% { left: 130%; } }
+.ov-badge {
+  padding: 5px 14px 6px; border-radius: 999px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #64748b, #334155); font-size: 14px; font-weight: 800;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.35), 0 3px 0 var(--ink);
+}
+.ov-badge.live { background: linear-gradient(180deg, #ff6b8a, #e11d48); animation: ov-pulse 1.2s ease-in-out infinite; }
+@keyframes ov-pulse { 50% { transform: scale(1.06); filter: brightness(1.15); } }
 
-/* ---------- Countdown ring ---------- */
-.ov-ring { position: relative; width: 50px; height: 50px; flex: 0 0 50px; }
+/* ---------- Countdown badge ---------- */
+.ov-ring { position: relative; width: 60px; height: 60px; flex: 0 0 60px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3b3486, var(--ink) 70%); box-shadow: 0 0 0 3px var(--ink), 0 4px 0 3px var(--ink), 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent); }
 .ov-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.ov-ring-track { fill: rgba(0,0,0,.35); stroke: rgba(255,255,255,.15); stroke-width: 5; }
-.ov-ring-fill { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
-.ov-ring-label { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: 16px; font-variant-numeric: tabular-nums; }
-.ov-ring.urgent .ov-ring-fill { stroke: #f43f5e; }
-.ov-ring.urgent { animation: ov-beat .5s ease-in-out infinite alternate; }
-@keyframes ov-beat { to { transform: scale(1.12); } }
+.ov-ring-track { fill: none; stroke: rgba(255,255,255,.12); stroke-width: 6; }
+.ov-ring-fill { fill: none; stroke: var(--gold); stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset .25s linear; filter: drop-shadow(0 0 3px rgba(255,210,63,.8)); }
+.ov-ring-label { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: 21px; font-variant-numeric: tabular-nums; text-shadow: var(--outline); }
+.ov-ring.urgent .ov-ring-fill { stroke: #ff3d6e; filter: drop-shadow(0 0 4px #ff3d6e); }
+.ov-ring.urgent { animation: ov-beat .5s ease-in-out infinite alternate; box-shadow: 0 0 0 3px var(--ink), 0 4px 0 3px var(--ink), 0 0 26px #ff3d6e; }
+@keyframes ov-beat { to { transform: scale(1.13); } }
 
 /* ---------- Headlines ---------- */
 .ov-headline {
-  margin-top: 12px; text-align: center; font-size: 32px; font-weight: 900; line-height: 1.2; overflow-wrap: anywhere;
-  background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--accent) 35%, white));
-  -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none;
-  filter: drop-shadow(0 2px 3px rgba(0,0,0,.6));
+  margin-top: 14px; text-align: center; font-size: 34px; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; letter-spacing: .005em;
+  color: #fff; text-shadow: var(--outline-3d), 0 0 22px color-mix(in srgb, var(--accent) 70%, transparent);
+  animation: ov-pop-in .45s cubic-bezier(.2,1.6,.4,1);
 }
-.ov-hint { margin: 8px 0 0; text-align: center; font-size: 14px; color: rgba(255,255,255,.82); font-weight: 700; }
-.ov-hint.big { font-size: 18px; margin: 14px 0; }
+@keyframes ov-pop-in { from { transform: scale(.7); opacity: 0; } }
+.ov-hint {
+  margin: 10px auto 0; width: fit-content; max-width: 100%; padding: 4px 14px 5px; border-radius: 999px;
+  background: rgba(0,0,0,.32); border: 2px solid rgba(255,255,255,.14);
+  text-align: center; font-size: 15px; font-weight: 700; color: #fff4c7;
+}
+.ov-hint.big { font-size: 19px; margin: 14px auto; }
 
-.ov-tiles { margin-top: 14px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+/* Letter tiles (unscramble, hangman): ivory blocks with a dark outline. */
+.ov-tiles { margin-top: 16px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
 .ov-tile-word { display: flex; gap: 6px; }
 .ov-tile {
-  width: 42px; height: 50px; display: grid; place-items: center; border-radius: 9px;
-  background: linear-gradient(180deg, #fff7d6, #f5d77a); color: #3b2a05; text-shadow: none;
-  font-size: 28px; font-weight: 900; text-transform: uppercase;
-  box-shadow: 0 4px 0 #b38a1f, 0 8px 14px rgba(0,0,0,.35);
-  animation: ov-tile-pop .4s cubic-bezier(.2,1.6,.4,1) both;
+  width: 44px; height: 52px; display: grid; place-items: center; border-radius: 11px;
+  background: linear-gradient(180deg, #fffdf2 0 45%, #ffe38a 46% 100%); color: #3b2a05; text-shadow: none;
+  border: 3px solid var(--ink);
+  font-size: 30px; font-weight: 800; text-transform: uppercase;
+  box-shadow: inset 0 -5px 0 rgba(180,120,0,.35), inset 0 2px 0 #fff, 0 5px 0 var(--ink);
+  animation: ov-tile-flip .5s cubic-bezier(.2,1.5,.4,1) both;
 }
-.ov-tile.blank { background: rgba(255,255,255,.12); box-shadow: inset 0 -4px 0 rgba(255,255,255,.35); }
+.ov-tile.blank { background: linear-gradient(180deg, #4a4396, #2e2870); box-shadow: inset 0 -5px 0 rgba(0,0,0,.3), inset 0 2px 0 rgba(255,255,255,.2), 0 5px 0 var(--ink); }
 .ov-tile-gap { width: 14px; }
+@keyframes ov-tile-flip { from { transform: rotateX(90deg) scale(.8); opacity: 0; } }
 @keyframes ov-tile-pop { from { transform: translateY(-10px) scale(.6); opacity: 0; } }
 
-.ov-boss { margin: 6px auto 0; text-align: center; font-size: 96px; line-height: 1.1; animation: ov-float 2.4s ease-in-out infinite; filter: drop-shadow(0 10px 18px rgba(0,0,0,.55)); }
-.ov-game.shake-0 .ov-boss, .ov-game.shake-1 .ov-boss { filter: drop-shadow(0 0 22px #f43f5e) brightness(1.4); }
-@keyframes ov-float { 50% { transform: translateY(-8px) rotate(-2deg); } }
+.ov-boss { margin: 6px auto 0; text-align: center; font-size: 104px; line-height: 1.1; animation: ov-float 2.4s ease-in-out infinite; filter: drop-shadow(0 6px 0 rgba(0,0,0,.35)) drop-shadow(0 14px 18px rgba(0,0,0,.5)); text-shadow: none; }
+.ov-game.shake-0 .ov-boss, .ov-game.shake-1 .ov-boss { filter: drop-shadow(0 0 24px #ff3d6e) brightness(1.5); }
+@keyframes ov-float { 50% { transform: translateY(-9px) rotate(-2deg); } }
 
 /* ---------- Progress / HP ---------- */
-.ov-progress { margin-top: 12px; display: grid; gap: 6px; }
-.ov-progress-label { display: flex; justify-content: space-between; font-size: 14px; font-weight: 800; }
-.ov-bar { position: relative; display: block; height: 8px; border-radius: 999px; background: rgba(255,255,255,.14); overflow: hidden; }
-.ov-bar.large { height: 18px; border: 2px solid rgba(0,0,0,.35); }
-.ov-bar > span { position: relative; display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 50%, #fff)); transition: width .35s ease; }
-.ov-bar > span::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); transform: translateX(-100%); animation: ov-shine 2.2s ease-in-out infinite; }
-.ov-bar.hp > span { background: linear-gradient(90deg, #ef4444, #f97316, #facc15); }
+.ov-progress { margin-top: 14px; display: grid; gap: 6px; }
+.ov-progress-label { display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; }
+.ov-bar { position: relative; display: block; height: 12px; border-radius: 999px; background: rgba(0,0,0,.45); overflow: hidden; border: 2px solid var(--ink); }
+.ov-bar.large { height: 26px; border-width: 3px; box-shadow: 0 3px 0 var(--ink); }
+.ov-bar > span {
+  position: relative; display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 55%, #fff) 0 45%, var(--accent) 50% 100%);
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,.2); transition: width .35s ease;
+}
+.ov-bar > span::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); transform: translateX(-100%); animation: ov-shine 2.2s ease-in-out infinite; }
+.ov-bar.hp > span { background: linear-gradient(180deg, #ff8a8a 0 40%, #ef4444 45%, #b91c1c 100%); }
 @keyframes ov-shine { to { transform: translateX(100%); } }
 
-/* ---------- Lists ---------- */
-.ov-options { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
-.ov-option { display: grid; grid-template-columns: 30px minmax(0,1fr) auto; gap: 10px; align-items: center; animation: ov-row-in .35s ease both; }
-.ov-option.no-badge { grid-template-columns: minmax(0,1fr) auto; }
-@keyframes ov-row-in { from { transform: translateX(-12px); opacity: 0; } }
-.ov-option-key { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: #fff; color: #111; font-weight: 900; font-size: 16px; text-shadow: none; }
-.ov-option-body { min-width: 0; display: grid; gap: 5px; }
-.ov-option-label { display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 800; }
-.ov-option-votes { font-weight: 900; font-size: 17px; font-variant-numeric: tabular-nums; }
-.ov-option.highlight .ov-option-key { background: #22c55e; color: #fff; }
-.ov-option.highlight .ov-option-label { color: #86efac; }
-.ov-message { position: relative; margin: 12px 0 0; padding: 8px 12px; border-radius: 12px; background: rgba(255,255,255,.08); font-size: 15px; color: #ffe08a; font-weight: 800; text-align: center; }
-
-/* ---------- Kahoot-style answers ---------- */
-.ov-answers { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.ov-answer {
-  position: relative; overflow: hidden; display: grid; grid-template-columns: 28px minmax(0,1fr) auto; align-items: center; gap: 8px;
-  min-height: 56px; padding: 10px 12px; border-radius: 12px; background: var(--tile); box-shadow: 0 4px 0 rgba(0,0,0,.35);
-  animation: ov-tile-pop .4s cubic-bezier(.2,1.5,.4,1) both;
+/* ---------- Lists (votes, game list, rankings) ---------- */
+.ov-options { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 9px; }
+.ov-option {
+  display: grid; grid-template-columns: 38px minmax(0,1fr) auto; gap: 10px; align-items: center;
+  padding: 7px 12px 7px 8px; border-radius: 16px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.04)), rgba(20,16,56,.85);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.12), 0 4px 0 var(--ink);
+  animation: ov-row-in .4s cubic-bezier(.2,1.4,.4,1) both;
 }
-.ov-answer:nth-child(2) { animation-delay: 60ms; } .ov-answer:nth-child(3) { animation-delay: 120ms; } .ov-answer:nth-child(4) { animation-delay: 180ms; }
-.ov-answer-shape { font-size: 20px; font-weight: 900; }
-.ov-answer-label { font-size: 16px; font-weight: 900; line-height: 1.15; overflow-wrap: anywhere; }
-.ov-answer-value { font-size: 20px; font-weight: 900; }
-.ov-answer-bar { position: absolute; left: 0; bottom: 0; height: 5px; background: rgba(255,255,255,.75); transition: width .4s ease; }
-.ov-answer.dim { filter: grayscale(.7) brightness(.55); }
-.ov-answer.correct { outline: 4px solid #fff; animation: ov-correct .6s ease both; }
-@keyframes ov-correct { 40% { transform: scale(1.06); } }
+.ov-option:nth-child(2) { animation-delay: 40ms; } .ov-option:nth-child(3) { animation-delay: 80ms; } .ov-option:nth-child(4) { animation-delay: 120ms; }
+.ov-option:nth-child(5) { animation-delay: 160ms; } .ov-option:nth-child(6) { animation-delay: 200ms; }
+.ov-option.no-badge { grid-template-columns: minmax(0,1fr) auto; }
+@keyframes ov-row-in { from { transform: translateX(-18px) scale(.95); opacity: 0; } }
+.ov-option-key {
+  width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6c8, var(--gold) 45%, var(--gold-deep)); color: #4a2a00;
+  border: 3px solid var(--ink); font-weight: 800; font-size: 18px; text-shadow: none;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,.2), 0 3px 0 var(--ink);
+}
+.ov-option-body { min-width: 0; display: grid; gap: 6px; }
+.ov-option-label { display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; font-weight: 800; line-height: 1.25; }
+.ov-option-votes { min-width: 34px; text-align: center; padding: 2px 10px; border-radius: 999px; background: rgba(0,0,0,.4); font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; color: var(--gold); }
+/* Long lists (game list, 6+ options): slimmer plates so they fit. */
+.ov-options.many { gap: 4px; }
+.ov-options.many .ov-option { grid-template-columns: 28px minmax(0,1fr) auto; gap: 8px; padding: 2px 10px 2px 4px; border-radius: 13px; }
+/* The vote share fills the plate instead of a separate bar (saves a line per row). */
+.ov-options.many .ov-option {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 65%, transparent) var(--pct, 0%), transparent var(--pct, 0%)),
+    linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.04)), rgba(20,16,56,.85);
+}
+.ov-options.many .ov-option.highlight { background: linear-gradient(90deg, rgba(255,255,255,.25) var(--pct, 0%), transparent var(--pct, 0%)), linear-gradient(180deg, #58e07a 0 45%, #22a447 50% 100%); }
+.ov-options.many .ov-option-key { width: 26px; height: 26px; font-size: 14px; border-width: 2px; }
+.ov-options.many .ov-option-label { font-size: 16px; line-height: 1.2; }
+.ov-options.many .ov-option-votes { font-size: 15px; line-height: 1.3; padding: 0 8px; }
+.ov-options.many .ov-bar { display: none; }
+.ov-option.highlight { background: linear-gradient(180deg, #58e07a 0 45%, #22a447 50% 100%); box-shadow: inset 0 2px 0 rgba(255,255,255,.4), 0 4px 0 var(--ink), 0 0 20px rgba(74,222,128,.55); }
+.ov-option.highlight .ov-option-votes { color: #fff; }
+/* ---------- Game list (lobby): rectangular game tiles, 2 columns, scrolls ---------- */
+.ov-menu {
+  --tile-h: 74px;
+  list-style: none; margin: 12px -6px 0; padding: 14px 6px 10px; display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: var(--tile-h); gap: 12px 10px; align-content: start;
+  max-height: 520px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+}
+.ov-menu::-webkit-scrollbar { display: none; }
+/* Fades at the edges show there is more to scroll. */
+.ov-menu.scrolling { mask-image: linear-gradient(180deg, transparent 0, #000 16px, #000 calc(100% - 26px), transparent 100%); }
+.ov-menu-item {
+  --tile: #f97316; --tile-light: #ffb86b;
+  position: relative; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px;
+  padding: 0 10px 0 10px; border-radius: 16px; border: 3px solid var(--ink);
+  background:
+    radial-gradient(120% 100% at 0% 0%, color-mix(in srgb, var(--tile) 32%, transparent), transparent 62%),
+    linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.03)), rgba(24,18,64,.94);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.14), 0 4px 0 var(--ink);
+  transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
+  animation: ov-tile-in .45s cubic-bezier(.2,1.4,.4,1) both;
+}
+@keyframes ov-tile-in { from { transform: translateY(14px) scale(.9); opacity: 0; } }
+.ov-menu-item.cat-english { --tile: #059669; --tile-light: #6ee7b7; }
+.ov-menu-item.cat-japanese { --tile: #e11d48; --tile-light: #fda4af; }
+.ov-menu-item.cat-chinese { --tile: #dc2626; --tile-light: #fcd34d; }
+/* Icon plate (category color) with the vote number as a gold coin on its corner. */
+.ov-menu-icon {
+  --icon: calc(var(--tile-h) * .6);
+  position: relative; width: var(--icon); height: var(--icon); display: grid; place-items: center; border-radius: 28%;
+  font-size: calc(var(--icon) * .56); line-height: 1; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, var(--tile-light) 0 45%, var(--tile) 50% 100%);
+  box-shadow: inset 0 -4px 0 rgba(0,0,0,.22), inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 var(--ink);
+}
+.ov-menu-num {
+  position: absolute; top: -10px; left: -10px; min-width: 26px; height: 26px; padding: 0 5px;
+  display: grid; place-items: center; border-radius: 999px; border: 2px solid var(--ink); color: #4a2a00;
+  font-size: 14px; font-weight: 900; text-shadow: none;
+  background: radial-gradient(circle at 35% 30%, #fff6c8, var(--gold) 45%, var(--gold-deep));
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,.2), 0 2px 0 var(--ink);
+}
+.ov-menu-body { min-width: 0; display: grid; gap: 6px; }
+.ov-menu-name {
+  font-size: 15px; font-weight: 800; line-height: 1.12; color: #fff; text-shadow: var(--outline);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* Vote bar with the count beside it (the name keeps the whole width above). */
+.ov-menu-meta { display: flex; align-items: center; gap: 7px; }
+.ov-menu-bar { flex: 1; min-width: 0; display: block; height: 9px; border-radius: 999px; border: 2px solid var(--ink); background: rgba(0,0,0,.45); overflow: hidden; }
+.ov-menu-bar > span {
+  display: block; height: 100%; width: var(--pct, 0%); border-radius: inherit; transition: width .35s ease;
+  background: linear-gradient(180deg, var(--tile-light) 0 45%, var(--tile) 50% 100%);
+}
+.ov-menu-votes { flex: 0 0 auto; display: flex; align-items: baseline; gap: 4px; line-height: 1; font-variant-numeric: tabular-nums; }
+.ov-menu-votes strong { font-size: 18px; font-weight: 900; color: var(--gold); text-shadow: var(--outline); }
+.ov-menu-votes small { font-size: 11px; font-weight: 800; color: rgba(255,255,255,.75); }
+/* Leading game: gold ring, warm glow and a crown. */
+.ov-menu-item.leader {
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(255,210,63,.35), transparent 62%),
+    linear-gradient(180deg, rgba(255,230,128,.22), rgba(255,255,255,.04)), rgba(46,30,72,.95);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.2), 0 4px 0 var(--ink), 0 0 0 3px var(--gold), 0 0 22px rgba(255,210,63,.5);
+}
+.ov-menu-crown { position: absolute; top: -15px; right: 8px; font-size: 22px; transform: rotate(14deg); filter: drop-shadow(0 2px 0 var(--ink)); animation: ov-crown 1.6s ease-in-out infinite; }
+@keyframes ov-crown { 50% { transform: rotate(4deg) translateY(-3px); } }
+/* Full screen: the list takes the height left in the card and scrolls inside it; bigger tiles. */
+.ov-column.full .ov-menu { --tile-h: 108px; flex: 1 1 0; min-height: 0; max-height: none; gap: 16px 14px; }
+.ov-column.full .ov-menu-num { min-width: 30px; height: 30px; font-size: 16px; top: -12px; left: -12px; }
+.ov-column.full .ov-menu-name { font-size: 20px; }
+.ov-column.full .ov-menu-bar { height: 12px; }
+.ov-column.full .ov-menu-votes strong { font-size: 21px; }
+.ov-column.full .ov-menu-votes small { font-size: 13px; }
+.ov-column.full .ov-menu-crown { font-size: 28px; top: -19px; }
+/* The game window scrolls the list with the mouse wheel (drag areas get no wheel events). */
+html.window-mode .ov-menu { -webkit-app-region: no-drag; }
+
+.ov-message {
+  position: relative; margin: 14px 0 0; padding: 8px 14px 9px; border-radius: 14px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #ffe27a 0 45%, #f5b400 50% 100%); color: #3b2a05; text-shadow: none;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.55), 0 4px 0 var(--ink);
+  font-size: 16px; font-weight: 800; text-align: center;
+}
+
+/* ---------- Candy answer buttons (quiz) ---------- */
+.ov-answers { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ov-answer {
+  position: relative; overflow: hidden; display: grid; grid-template-columns: 36px minmax(0,1fr) auto; align-items: center; gap: 10px;
+  min-height: 64px; padding: 10px 12px 12px; border-radius: 18px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tile) 62%, #fff) 0 44%, var(--tile) 50% 100%);
+  box-shadow: inset 0 -6px 0 rgba(0,0,0,.25), inset 0 3px 0 rgba(255,255,255,.4), 0 5px 0 var(--ink);
+  animation: ov-tile-pop .45s cubic-bezier(.2,1.6,.4,1) both;
+}
+.ov-answer:nth-child(2) { animation-delay: 70ms; } .ov-answer:nth-child(3) { animation-delay: 140ms; } .ov-answer:nth-child(4) { animation-delay: 210ms; }
+.ov-answer-shape {
+  width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%;
+  background: #fff; color: var(--tile); border: 3px solid var(--ink); text-shadow: none;
+  font-size: 18px; font-weight: 800; box-shadow: 0 3px 0 var(--ink);
+}
+.ov-answer-label { font-size: 19px; font-weight: 800; line-height: 1.12; overflow-wrap: anywhere; }
+.ov-answer-value { padding: 2px 10px; border-radius: 999px; background: rgba(0,0,0,.35); font-size: 20px; font-weight: 800; }
+.ov-answer-bar { position: absolute; left: 0; bottom: 0; height: 6px; background: rgba(255,255,255,.85); transition: width .4s ease; }
+.ov-answer.dim { filter: grayscale(.85) brightness(.5); transform: scale(.96); transition: .3s ease; }
+.ov-answer.correct { box-shadow: inset 0 -6px 0 rgba(0,0,0,.25), inset 0 3px 0 rgba(255,255,255,.4), 0 5px 0 var(--ink), 0 0 0 4px #fff, 0 0 28px rgba(255,255,255,.8); animation: ov-correct .7s cubic-bezier(.2,1.6,.4,1) both; }
+.ov-answer.correct .ov-answer-shape { background: #22c55e; color: #fff; font-size: 0; }
+.ov-answer.correct .ov-answer-shape::after { content: '✔'; font-size: 20px; text-shadow: var(--outline); }
+@keyframes ov-correct { 40% { transform: scale(1.08) rotate(-1deg); } }
 
 /* ---------- Tug of war ---------- */
-.ov-tug { margin-top: 12px; display: grid; gap: 10px; }
+.ov-tug { margin-top: 14px; display: grid; gap: 12px; }
 .ov-tug-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
-.ov-tug-team { display: grid; gap: 2px; padding: 8px 10px; border-radius: 14px; }
-.ov-tug-team.a { background: linear-gradient(135deg, #dc2626, #f43f5e); }
-.ov-tug-team.b { background: linear-gradient(135deg, #1d4ed8, #3b82f6); text-align: right; }
-.ov-tug-team strong { font-size: 16px; }
-.ov-tug-team span { font-size: 12px; opacity: .85; font-weight: 700; }
-.ov-tug-team b { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
-.ov-vs { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: #111; border: 3px solid #fff; font-weight: 900; font-size: 15px; }
-.ov-rope { position: relative; height: 22px; display: flex; border-radius: 999px; overflow: visible; background: repeating-linear-gradient(45deg, #b07a3a 0 8px, #8a5a24 8px 16px); box-shadow: inset 0 0 0 2px rgba(0,0,0,.35); }
-.ov-rope-fill { height: 100%; opacity: .55; transition: width .5s ease; }
+.ov-tug-team { display: grid; gap: 2px; padding: 8px 12px 10px; border-radius: 16px; border: 3px solid var(--ink); box-shadow: inset 0 -5px 0 rgba(0,0,0,.25), inset 0 2px 0 rgba(255,255,255,.35), 0 4px 0 var(--ink); }
+.ov-tug-team.a { background: linear-gradient(180deg, #ff7a8e 0 45%, #e11d48 50%); }
+.ov-tug-team.b { background: linear-gradient(180deg, #7ab4ff 0 45%, #2563eb 50%); text-align: right; }
+.ov-tug-team strong { font-size: 17px; }
+.ov-tug-team span { font-size: 13px; font-weight: 700; }
+.ov-tug-team b { font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+.ov-vs { width: 50px; height: 50px; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff6c8, var(--gold) 45%, var(--gold-deep)); color: #4a2a00; text-shadow: none; border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink); font-weight: 800; font-size: 17px; }
+.ov-rope { position: relative; height: 24px; display: flex; border-radius: 999px; overflow: visible; background: repeating-linear-gradient(45deg, #c48a45 0 8px, #8a5a24 8px 16px); border: 3px solid var(--ink); }
+.ov-rope-fill { height: 100%; opacity: .6; transition: width .5s ease; }
 .ov-rope-fill.a { background: #ef4444; border-radius: 999px 0 0 999px; }
 .ov-rope-fill.b { background: #3b82f6; border-radius: 0 999px 999px 0; }
-.ov-rope-mid { position: absolute; left: 50%; top: -8px; bottom: -8px; width: 3px; background: #fff; transform: translateX(-50%); border-radius: 2px; }
+.ov-rope-mid { position: absolute; left: 50%; top: -9px; bottom: -9px; width: 4px; background: #fff; transform: translateX(-50%); border-radius: 2px; box-shadow: 0 0 0 2px var(--ink); }
 .ov-knot {
-  position: absolute; top: 50%; width: 34px; height: 34px; border-radius: 50%; z-index: 1;
+  position: absolute; top: 50%; width: 38px; height: 38px; border-radius: 50%; z-index: 1;
   transform: translate(-50%, -50%); transition: left .5s cubic-bezier(.3,1.4,.5,1);
-  background: radial-gradient(circle at 35% 30%, #fff 0 18%, #fde68a 19% 45%, #d97706 46%);
-  border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(0,0,0,.35), 0 0 18px rgba(253,230,138,.8);
+  background: radial-gradient(circle at 35% 30%, #fff 0 16%, #fde68a 17% 45%, #d97706 46%);
+  border: 3px solid var(--ink); box-shadow: 0 3px 0 var(--ink), 0 0 20px rgba(253,230,138,.9);
 }
 
 /* ---------- Race ---------- */
-.ov-race { margin-top: 12px; display: grid; gap: 7px; }
+.ov-race { margin-top: 14px; display: grid; gap: 8px; }
 .ov-lane { display: grid; gap: 3px; }
-.ov-lane-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ov-lane-name { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 800; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ov-lane-track {
-  position: relative; height: 38px; border-radius: 10px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--lane) 35%, transparent), rgba(255,255,255,.06)),
-    repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0 2px, transparent 2px 38px);
-  border: 1px solid color-mix(in srgb, var(--lane) 55%, transparent);
+  position: relative; height: 42px; border-radius: 12px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lane) 45%, #fff) 0 40%, color-mix(in srgb, var(--lane) 70%, #000) 100%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 3px, transparent 3px 40px);
+  box-shadow: inset 0 3px 0 rgba(255,255,255,.3), 0 3px 0 var(--ink);
 }
-.ov-racer { position: absolute; top: 2px; font-size: 30px; line-height: 34px; transition: left .4s ease; }
+.ov-racer { position: absolute; top: 1px; font-size: 32px; line-height: 36px; transition: left .4s ease; text-shadow: none; filter: drop-shadow(0 3px 0 rgba(0,0,0,.35)); }
 .ov-racer-icon { display: inline-block; animation: ov-bob .5s ease-in-out infinite alternate; }
 .ov-racer-icon.flip { transform: scaleX(-1); animation-name: ov-bob-flip; }
 @keyframes ov-bob { to { transform: translateY(-3px) rotate(-4deg); } }
 @keyframes ov-bob-flip { from { transform: scaleX(-1); } to { transform: scaleX(-1) translateY(-3px) rotate(4deg); } }
-.ov-crown { position: absolute; left: 50%; top: -16px; font-size: 18px; transform: translateX(-50%); }
-.ov-finish { position: absolute; right: 0; top: 0; bottom: 0; width: 14px; border-radius: 0 9px 9px 0; background: repeating-conic-gradient(#fff 0 25%, #111 0 50%) 0 0 / 7px 7px; }
+.ov-crown { position: absolute; left: 50%; top: -17px; font-size: 20px; transform: translateX(-50%); }
+.ov-finish { position: absolute; right: 0; top: 0; bottom: 0; width: 16px; border-radius: 0 8px 8px 0; background: repeating-conic-gradient(#fff 0 25%, #111 0 50%) 0 0 / 8px 8px; }
 
 /* ---------- Wheel ---------- */
-.ov-wheel { position: relative; margin: 14px auto 0; width: 320px; max-width: 100%; }
-.ov-wheel svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 10px 22px rgba(0,0,0,.5)) drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 50%, transparent)); }
-.ov-wheel-pointer { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); z-index: 1; font-size: 32px; color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
+.ov-wheel { position: relative; margin: 16px auto 0; width: 320px; max-width: 100%; }
+.ov-wheel svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 6px 0 var(--ink)) drop-shadow(0 0 22px color-mix(in srgb, var(--accent) 55%, transparent)); }
+.ov-wheel-pointer { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); z-index: 1; font-size: 36px; color: var(--gold); text-shadow: var(--outline-3d); }
 .ov-wheel.spinning .ov-wheel-pointer { animation: ov-tick .12s linear infinite alternate; }
 @keyframes ov-tick { to { transform: translateX(-50%) rotate(-12deg); } }
-.ov-wheel-label { fill: #fff; font-size: 8.5px; font-weight: 900; paint-order: stroke; stroke: rgba(0,0,0,.45); stroke-width: 1.5px; }
+.ov-wheel-label { fill: #fff; font-size: 8.5px; font-weight: 800; paint-order: stroke; stroke: var(--ink); stroke-width: 2px; }
+
+/* ---------- Crossword (Ô chữ) ---------- */
+.ov-crossword { margin-top: 14px; display: grid; gap: 5px; }
+.ov-cw-row { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 4px; align-items: center; }
+.ov-cw-num {
+  grid-column: 1; justify-self: center; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%;
+  background: rgba(0,0,0,.4); border: 2px solid rgba(255,255,255,.25); font-size: 14px; font-weight: 800; color: rgba(255,255,255,.8);
+}
+.ov-cw-cell {
+  aspect-ratio: 1; display: grid; place-items: center; border-radius: 8px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #4a4396 0 45%, #2e2870 50%);
+  box-shadow: inset 0 -4px 0 rgba(0,0,0,.3), inset 0 2px 0 rgba(255,255,255,.2), 0 3px 0 var(--ink);
+  font-size: min(24px, calc(300px / var(--cols))); font-weight: 800; color: #fff; text-transform: uppercase;
+}
+.ov-cw-cell.key { background: linear-gradient(180deg, #ff9f5a 0 45%, #e8590c 50%); }
+.ov-cw-cell.open { background: linear-gradient(180deg, #fffdf2 0 45%, #ffe38a 50%); color: #3b2a05; text-shadow: none; box-shadow: inset 0 -4px 0 rgba(180,120,0,.35), inset 0 2px 0 #fff, 0 3px 0 var(--ink); animation: ov-tile-flip .5s cubic-bezier(.2,1.5,.4,1) both; }
+.ov-cw-cell.key.open { background: radial-gradient(circle at 35% 30%, #fff6c8, var(--gold) 45%, var(--gold-deep)); color: #4a2a00; }
+.ov-cw-row.active .ov-cw-cell { box-shadow: inset 0 -4px 0 rgba(0,0,0,.3), inset 0 2px 0 rgba(255,255,255,.2), 0 3px 0 var(--ink), 0 0 0 3px #fff, 0 0 16px rgba(255,255,255,.7); animation: ov-glow 1s ease-in-out infinite alternate; }
+.ov-cw-row.active .ov-cw-num { background: var(--gold); color: #4a2a00; border-color: var(--ink); text-shadow: none; }
+@keyframes ov-glow { to { filter: brightness(1.25); } }
+.ov-cw-row.missed .ov-cw-cell:not(.open) { background: linear-gradient(180deg, #2a2440, #16121f); }
+.ov-cw-keyword { margin-top: 8px; display: flex; gap: 5px; justify-content: center; align-items: center; font-size: 22px; }
+.ov-cw-keyword .ov-cw-cell { width: min(40px, calc(330px / var(--cols))); }
+.ov-cw-keyword.solved .ov-cw-cell { background: linear-gradient(180deg, #86efac 0 45%, #16a34a 50%); color: #fff; text-shadow: var(--outline); }
+/* Full screen: square cells would grow with the width; keep the grid about 380px tall. */
+.ov-column.full .ov-crossword { flex: 0 0 auto; width: min(100%, calc(380px * var(--cols) / (var(--rows) + 1.6))); margin-inline: auto; }
+
+/* ---------- Flip cards (memory, bomb) ---------- */
+.ov-cards { margin-top: 14px; display: grid; grid-template-columns: repeat(var(--card-cols), minmax(0, 1fr)); gap: 8px; }
+.ov-flip {
+  aspect-ratio: 1; display: grid; place-items: center; border-radius: 12px; border: 3px solid var(--ink);
+  box-shadow: inset 0 -5px 0 rgba(0,0,0,.28), inset 0 2px 0 rgba(255,255,255,.3), 0 4px 0 var(--ink);
+  font-weight: 800; overflow: hidden;
+}
+.ov-flip.closed { background: repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0 6px, transparent 6px 12px), linear-gradient(180deg, #7c6cff 0 45%, #4b3fc9 50%); }
+.ov-flip-back { font-size: min(26px, calc(160px / var(--card-cols))); text-shadow: var(--outline); }
+.ov-flip:not(.closed) { background: linear-gradient(180deg, #fffdf2 0 45%, #ffe38a 50%); animation: ov-card-flip .45s cubic-bezier(.2,1.5,.4,1) both; }
+.ov-flip-face { font-size: min(38px, calc(220px / var(--card-cols))); line-height: 1; text-shadow: none; color: #3b2a05; }
+.ov-flip-face.text { font-size: min(17px, calc(100px / var(--card-cols))); line-height: 1.1; padding: 0 4px; text-align: center; overflow-wrap: anywhere; }
+.ov-flip.good { background: linear-gradient(180deg, #a7f3c0 0 45%, #22c55e 50%); }
+.ov-flip.bad { background: linear-gradient(180deg, #ff9aa8 0 45%, #e11d48 50%); animation: ov-card-flip .45s cubic-bezier(.2,1.5,.4,1) both, ov-shake-a .45s ease .1s; }
+@keyframes ov-card-flip { from { transform: rotateY(90deg) scale(.9); } }
+.ov-column.full .ov-cards { flex: 0 0 auto; width: min(100%, calc(420px * var(--card-cols) / 5)); margin-inline: auto; }
 
 /* ---------- How to join ---------- */
-.ov-howto { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-.ov-howto span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); font-size: 13px; font-weight: 800; }
+.ov-howto { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.ov-howto span {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 13px 7px; border-radius: 999px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #5b52c9 0 45%, #3b3399 50%);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.3), 0 3px 0 var(--ink);
+  font-size: 14px; font-weight: 800;
+}
 .ov-howto em { font-style: normal; }
 
 /* ---------- Avatars ---------- */
-.ov-avatar { display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: #fff; font-weight: 900; line-height: 1; text-shadow: 0 1px 2px rgba(0,0,0,.5); box-shadow: 0 0 0 2px rgba(255,255,255,.85), 0 2px 6px rgba(0,0,0,.4); }
+.ov-avatar { display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: #fff; font-weight: 800; line-height: 1; text-shadow: var(--outline); border: 2px solid var(--ink); box-shadow: inset 0 2px 0 rgba(255,255,255,.4), 0 2px 0 var(--ink); }
 
 /* ---------- Leaderboard ---------- */
-.ov-leaderboard header { font-size: 18px; font-weight: 900; margin-bottom: 10px; }
-.ov-leaderboard ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.ov-leaderboard li { display: grid; grid-template-columns: 30px auto minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 5px 8px; border-radius: 12px; background: rgba(255,255,255,.05); font-size: 16px; animation: ov-row-in .35s ease both; }
-.ov-leaderboard li.top-1 { background: linear-gradient(90deg, rgba(250,204,21,.35), rgba(250,204,21,.05)); }
-.ov-leaderboard li.top-2 { background: linear-gradient(90deg, rgba(203,213,225,.3), rgba(203,213,225,.04)); }
-.ov-leaderboard li.top-3 { background: linear-gradient(90deg, rgba(217,119,6,.32), rgba(217,119,6,.04)); }
-.ov-rank { text-align: center; font-weight: 900; color: rgba(255,255,255,.7); font-size: 18px; }
+.ov-leaderboard header {
+  width: fit-content; margin: -30px auto 12px; padding: 5px 22px 7px; border-radius: 14px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #ffe27a 0 45%, #f5b400 50%); color: #3b2a05; text-shadow: none;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.55), 0 4px 0 var(--ink);
+  font-size: 19px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em;
+}
+.ov-leaderboard { margin-top: 20px; }
+.ov-leaderboard ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.ov-leaderboard li {
+  position: relative; overflow: hidden; display: grid; grid-template-columns: 34px auto minmax(0,1fr) auto; gap: 9px; align-items: center;
+  padding: 5px 10px 6px; border-radius: 14px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.03)), rgba(20,16,56,.85);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.12), 0 3px 0 var(--ink);
+  font-size: 17px; animation: ov-row-in .4s cubic-bezier(.2,1.4,.4,1) both;
+}
+.ov-leaderboard li.top-1 { background: linear-gradient(180deg, #ffe680 0 45%, #f5b400 50% 100%); }
+.ov-leaderboard li.top-2 { background: linear-gradient(180deg, #f1f5f9 0 45%, #a8b3c4 50% 100%); }
+.ov-leaderboard li.top-3 { background: linear-gradient(180deg, #ffc58f 0 45%, #d9771e 50% 100%); }
+.ov-leaderboard li.top-1::after { content: ''; position: absolute; top: 0; bottom: 0; width: 30%; left: -40%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.7), transparent); transform: skewX(-20deg); animation: ov-sweep 2.8s ease-in-out infinite; }
+.ov-rank { text-align: center; font-weight: 800; font-size: 20px; }
 .ov-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
-.ov-points { font-weight: 900; font-variant-numeric: tabular-nums; color: #fde68a; }
+.ov-points { padding: 1px 10px 2px; border-radius: 999px; background: rgba(0,0,0,.45); font-weight: 800; font-variant-numeric: tabular-nums; color: var(--gold); }
+.ov-points::before { content: '⭐ '; font-size: .8em; }
+
+/* Full screen: a compact leaderboard leaves the game card more room. */
+.ov-column.full .ov-leaderboard { padding: 12px 14px; }
+.ov-column.full .ov-leaderboard header { margin: -26px auto 8px; font-size: 16px; padding: 3px 18px 5px; }
+.ov-column.full .ov-leaderboard ol { gap: 5px; }
+.ov-column.full .ov-leaderboard li { padding: 2px 10px 3px; font-size: 15px; }
 
 /* ---------- Now playing / alerts ---------- */
-.ov-now-playing { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 15px; }
-.ov-note { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; border-radius: 8px; background: linear-gradient(145deg, #7867ff, #bb5cff); animation: ov-float 2s ease-in-out infinite; }
-.ov-alert { display: flex; align-items: center; gap: 12px; font-size: 19px; font-weight: 900; border-color: rgba(224,92,255,.7); background: linear-gradient(120deg, rgba(168,85,247,.55), rgba(236,72,153,.45)); animation: ov-alert-in .5s cubic-bezier(.2,1.5,.4,1); }
-.ov-alert.join { border-color: rgba(59,130,246,.7); background: linear-gradient(120deg, rgba(59,130,246,.5), rgba(14,165,233,.4)); }
-.ov-alert.info { border-color: rgba(255,255,255,.3); background: rgba(12,14,24,.9); font-size: 16px; }
-.ov-alert-icon { font-size: 30px; animation: ov-beat .6s ease-in-out 3 alternate; }
-@keyframes ov-alert-in { from { transform: translateY(-20px) scale(.9); opacity: 0; } }
+.ov-now-playing { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 16px; }
+.ov-note { width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center; border-radius: 10px; border: 3px solid var(--ink); background: linear-gradient(180deg, #b69cff, #7c3aed); box-shadow: 0 3px 0 var(--ink); animation: ov-float 2s ease-in-out infinite; }
+.ov-alert {
+  display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 800;
+  background: linear-gradient(180deg, #f472d0 0 45%, #a21caf 50%);
+  box-shadow: inset 0 3px 0 rgba(255,255,255,.35), 0 6px 0 var(--ink), 0 0 26px rgba(236,72,153,.5);
+  animation: ov-alert-in .55s cubic-bezier(.2,1.6,.4,1);
+}
+.ov-alert.join { background: linear-gradient(180deg, #7cc4ff 0 45%, #1d6fe0 50%); box-shadow: inset 0 3px 0 rgba(255,255,255,.35), 0 6px 0 var(--ink); }
+.ov-alert.info { background: linear-gradient(180deg, #3a3380, #1a1545); font-size: 17px; }
+.ov-alert-icon { font-size: 32px; text-shadow: none; animation: ov-beat .6s ease-in-out 3 alternate; }
+@keyframes ov-alert-in { from { transform: translateY(-24px) scale(.85); opacity: 0; } }
 
 /* ---------- Floating popups ---------- */
 .ov-popups { position: absolute; left: 0; right: 0; top: 42%; height: 0; pointer-events: none; z-index: 5; }
-.ov-popup { position: absolute; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 26px; font-weight: 900; color: #fff; animation: ov-float-up 1.4s ease-out forwards; text-shadow: 0 3px 6px rgba(0,0,0,.7); }
-.ov-popup.hit { color: #ff4d6d; font-size: 34px; }
-.ov-popup.correct { color: #4ade80; }
-.ov-popup.wrong { color: #fb7185; }
-.ov-popup.score { color: #fde047; }
-@keyframes ov-float-up { 0% { transform: translate(-50%, 10px) scale(.6); opacity: 0; } 15% { transform: translate(-50%, 0) scale(1.15); opacity: 1; } 100% { transform: translate(-50%, -70px) scale(1); opacity: 0; } }
+.ov-popup { position: absolute; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 28px; font-weight: 800; color: #fff; animation: ov-float-up 1.4s ease-out forwards; text-shadow: var(--outline-3d); }
+.ov-popup.hit { color: #ff5c7c; font-size: 40px; }
+.ov-popup.correct { color: #6bff95; }
+.ov-popup.wrong { color: #ff7b93; }
+.ov-popup.score { color: var(--gold); }
+@keyframes ov-float-up { 0% { transform: translate(-50%, 10px) scale(.5); opacity: 0; } 15% { transform: translate(-50%, 0) scale(1.25); opacity: 1; } 30% { transform: translate(-50%, -6px) scale(1); } 100% { transform: translate(-50%, -80px) scale(1); opacity: 0; } }
 
 /* ---------- Full-frame layers: confetti + banners ---------- */
 .ov-confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
-.ov-banner-layer { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 30; }
+.ov-banner-layer { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 30; overflow: hidden; }
 .ov-banner {
-  display: grid; justify-items: center; gap: 10px; min-width: 50%; max-width: 86%; padding: calc(26px * var(--frame-zoom, 1)) calc(34px * var(--frame-zoom, 1));
-  border-radius: calc(28px * var(--frame-zoom, 1)); text-align: center;
-  background: linear-gradient(160deg, rgba(30,27,75,.95), rgba(10,10,25,.95)); border: 3px solid rgba(255,255,255,.3);
-  box-shadow: 0 0 60px rgba(0,0,0,.6), 0 0 40px rgba(250,204,21,.35);
-  animation: ov-banner-in .55s cubic-bezier(.2,1.6,.4,1);
+  position: relative; display: grid; justify-items: center; gap: 10px; min-width: 50%; max-width: 86%;
+  padding: calc(26px * var(--frame-zoom, 1)) calc(36px * var(--frame-zoom, 1));
+  border-radius: calc(30px * var(--frame-zoom, 1)); text-align: center;
+  background: radial-gradient(120% 80% at 50% 0%, #4c3fb5, #1a1545 70%);
+  border: calc(4px * var(--frame-zoom, 1)) solid var(--ink);
+  box-shadow: inset 0 0 0 calc(4px * var(--frame-zoom, 1)) var(--gold), 0 calc(8px * var(--frame-zoom, 1)) 0 var(--ink), 0 0 80px rgba(0,0,0,.6);
+  animation: ov-banner-in .6s cubic-bezier(.2,1.7,.4,1);
   font-size: calc(18px * var(--frame-zoom, 1));
+  --outline: calc(2px * var(--frame-zoom, 1)) calc(2px * var(--frame-zoom, 1)) 0 var(--ink), calc(-2px * var(--frame-zoom, 1)) calc(2px * var(--frame-zoom, 1)) 0 var(--ink), calc(2px * var(--frame-zoom, 1)) calc(-2px * var(--frame-zoom, 1)) 0 var(--ink), calc(-2px * var(--frame-zoom, 1)) calc(-2px * var(--frame-zoom, 1)) 0 var(--ink);
+  text-shadow: var(--outline);
 }
-.ov-banner.win { border-color: #facc15; }
-.ov-banner.lose { border-color: rgba(255,255,255,.35); box-shadow: 0 0 60px rgba(0,0,0,.6); }
-.ov-banner.start { border-color: #7867ff; box-shadow: 0 0 60px rgba(120,103,255,.5); }
-.ov-banner-icon { font-size: 3.4em; line-height: 1; animation: ov-beat .5s ease-in-out infinite alternate; }
-.ov-banner-title { font-size: 2.4em; font-weight: 900; letter-spacing: .02em; background: linear-gradient(180deg, #fff, #fde68a); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(0 3px 4px rgba(0,0,0,.6)); }
-.ov-banner.start .ov-banner-title { background: linear-gradient(180deg, #fff, #c4b5fd); -webkit-background-clip: text; background-clip: text; }
-.ov-banner-user { display: inline-flex; align-items: center; gap: 12px; font-size: 1.6em; font-weight: 900; }
-.ov-banner-text { font-size: 1.1em; font-weight: 800; color: rgba(255,255,255,.88); max-width: 30em; }
-@keyframes ov-banner-in { from { transform: scale(.4) rotate(-4deg); opacity: 0; } }
+/* Rotating light rays behind the banner. */
+.ov-banner-rays {
+  position: absolute; left: 50%; top: 50%; width: 260%; aspect-ratio: 1; z-index: -1; pointer-events: none;
+  transform: translate(-50%, -50%);
+  background: repeating-conic-gradient(from 0deg, rgba(255,226,122,.34) 0 10deg, transparent 10deg 20deg);
+  mask-image: radial-gradient(circle, #000 20%, transparent 62%);
+  -webkit-mask-image: radial-gradient(circle, #000 20%, transparent 62%);
+  animation: ov-rays 9s linear infinite;
+}
+.ov-banner.lose .ov-banner-rays { background: repeating-conic-gradient(from 0deg, rgba(255,255,255,.12) 0 10deg, transparent 10deg 20deg); }
+.ov-banner.start .ov-banner-rays { background: repeating-conic-gradient(from 0deg, rgba(167,139,250,.4) 0 10deg, transparent 10deg 20deg); }
+@keyframes ov-rays { to { transform: translate(-50%, -50%) rotate(360deg); } }
+.ov-banner.win { box-shadow: inset 0 0 0 calc(4px * var(--frame-zoom, 1)) var(--gold), 0 calc(8px * var(--frame-zoom, 1)) 0 var(--ink), 0 0 90px rgba(255,210,63,.5); }
+.ov-banner.lose { box-shadow: inset 0 0 0 calc(4px * var(--frame-zoom, 1)) #94a3b8, 0 calc(8px * var(--frame-zoom, 1)) 0 var(--ink), 0 0 80px rgba(0,0,0,.6); }
+.ov-banner.start { box-shadow: inset 0 0 0 calc(4px * var(--frame-zoom, 1)) #a78bfa, 0 calc(8px * var(--frame-zoom, 1)) 0 var(--ink), 0 0 80px rgba(120,103,255,.55); }
+.ov-banner-icon { font-size: 3.6em; line-height: 1; text-shadow: none; filter: drop-shadow(0 calc(5px * var(--frame-zoom, 1)) 0 rgba(0,0,0,.35)); animation: ov-beat .5s ease-in-out infinite alternate; }
+.ov-banner-title { font-size: 2.8em; font-weight: 800; line-height: 1; letter-spacing: .02em; color: var(--gold); text-transform: uppercase; }
+.ov-banner.start .ov-banner-title { color: #fff; }
+.ov-banner.lose .ov-banner-title { color: #e2e8f0; }
+.ov-banner-user { display: inline-flex; align-items: center; gap: .4em; font-size: 1.7em; font-weight: 800; }
+/* The avatar is sized in px by the component; follow the banner's scale instead. */
+.ov-banner-user .ov-avatar { width: 1.3em !important; height: 1.3em !important; font-size: .65em !important; }
+.ov-banner-text { font-size: 1.15em; font-weight: 700; color: #fff4c7; max-width: 30em; }
+@keyframes ov-banner-in { 0% { transform: scale(.3) rotate(-6deg); opacity: 0; } 60% { transform: scale(1.08) rotate(1deg); opacity: 1; } 100% { transform: none; } }
+
+/* Honour the OS "reduce motion" setting (looping decorations only). */
+@media (prefers-reduced-motion: reduce) {
+  .ov-game-header strong::after, .ov-leaderboard li.top-1::after, .ov-banner-rays, .ov-bar > span::after { animation: none; }
+}

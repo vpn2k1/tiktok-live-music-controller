@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { OverlayEffect } from '../shared/types';
+import { t } from '../shared/i18n';
 import { Avatar } from './parts';
 
 const POPUP_MS = 1400;
@@ -67,9 +68,10 @@ export function Popups({ popups }: { popups: OverlayEffect[] }) {
 export function EffectBanner({ effect }: { effect: OverlayEffect | null }) {
   if (!effect) return null;
   const icon = effect.kind === 'start' ? '🎮' : effect.kind === 'win' ? '🏆' : '⏰';
-  const title = effect.kind === 'start' ? 'Bắt đầu!' : effect.kind === 'win' ? 'Chiến thắng!' : 'Hết giờ!';
+  const title = t(effect.kind === 'start' ? 'Bắt đầu!' : effect.kind === 'win' ? 'Chiến thắng!' : 'Hết giờ!');
   return (
     <div key={effect.id} className={`ov-banner ${effect.kind}`} role="status">
+      <span className="ov-banner-rays" aria-hidden="true" />
       <span className="ov-banner-icon">{icon}</span>
       <strong className="ov-banner-title">{title}</strong>
       {effect.user ? (

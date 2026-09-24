@@ -1,0 +1,39 @@
+# Desktop packages: `npm run dist:mac` (.dmg + .zip) and `npm run dist:win` (installer + portable .exe).
+# Builds are unsigned: macOS asks to confirm the first launch (right-click → Open),
+# Windows SmartScreen shows "More info → Run anyway".
+appId: local.tiklivevpn
+productName: TikLiveVPN
+artifactName: TikLiveVPN-${version}-${os}-${arch}.${ext}
+directories:
+  output: release
+  # Icons: build/icon.icns (macOS), build/icon.ico (Windows), made from build/icon.svg by `npm run icons`.
+  buildResources: build
+# No auto-update feed (latest*.yml).
+publish: null
+files:
+  - package.json
+  - dist/**
+  - dist-electron/**
+  - "!**/*.map"
+mac:
+  category: public.app-category.entertainment
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  # Ad-hoc signature (no Apple developer certificate needed; required to run on Apple Silicon).
+  identity: "-"
+  # Hardened runtime is only needed for Apple notarization (a paid developer ID).
+  hardenedRuntime: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+portable:
+  artifactName: TikLiveVPN-${version}-portable.${ext}

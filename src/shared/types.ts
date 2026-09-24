@@ -1,4 +1,7 @@
-import type { OverlayConfig } from './overlay';
+import type { AiGenerateRequest, AiProvider, AiResult, AiStatus } from './ai';
+import type { Language } from './i18n';
+import type { LiveEventBatch } from './eventBatch';
+import type { OverlayConfig, OverlayWindowAction } from './overlay';
 
 export type TikTokEventType = 'chat' | 'gift' | 'like' | 'follow' | 'join' | string;
 
@@ -95,6 +98,25 @@ export interface OverlayRow {
   highlight?: boolean;
 }
 
+/** One game in the overlay's game list. */
+export interface OverlayMenuItem {
+  /** What viewers type to vote (1-based, = position in the list). */
+  number: number;
+  icon: string;
+  name: string;
+  /** Game category (fun / english / japanese / chinese): tile color. */
+  category: string;
+  votes: number;
+  /** Share of all votes, 0–100. */
+  percent: number;
+  /** Has the most votes (and at least one). */
+  leader: boolean;
+}
+
+export interface OverlayMenu {
+  items: OverlayMenuItem[];
+}
+
 export interface OverlayProgress {
   label: string;
   value: number;
@@ -144,6 +166,37 @@ export interface OverlayWheel {
   durationMs: number;
 }
 
+/** Olympia-style crossword grid: rows aligned on the keyword column. */
+export interface OverlayCrossword {
+  rows: {
+    /** One cell per answer letter; '' = still hidden. */
+    cells: string[];
+    /** Empty columns before the row, so keyword letters line up. */
+    offset: number;
+    /** Index in `cells` of this row's keyword letter. */
+    keyIndex: number;
+    state: 'hidden' | 'active' | 'solved' | 'missed';
+  }[];
+  columns: number;
+  keyColumn: number;
+  /** Keyword letters revealed so far ('' = hidden). */
+  keyword: string[];
+  keywordSolved: boolean;
+}
+
+/** Grid of flip cards (memory match, bomb wires…). */
+export interface OverlayCards {
+  cards: {
+    /** Shown when the card is face up. */
+    face: string;
+    /** Shown on the back (usually the number viewers type). */
+    label: string;
+    /** closed = face down; peek = briefly face up; good / bad = done (matched, safe, boom…). */
+    state: 'closed' | 'peek' | 'good' | 'bad';
+  }[];
+  columns: number;
+}
+
 /** Display-only description of the running game; each game builds its own. */
 export interface OverlayGameView {
   headline: string | null;
@@ -153,6 +206,8 @@ export interface OverlayGameView {
   teams: [OverlayTeam, OverlayTeam] | null;
   race: OverlayRace | null;
   wheel: OverlayWheel | null;
+  crossword?: OverlayCrossword | null;
+  cards?: OverlayCards | null;
   style?: OverlayStyle;
 }
 
@@ -175,11 +230,15 @@ export interface OverlayState {
     /** Accent color of the running game. */
     accent: string;
     howTo: OverlayHowTo[];
+    /** The game list (lobby), drawn as game tiles; `rows` carry the same games for compact views. */
+    menu?: OverlayMenu;
   };
   effects: OverlayEffect[];
   leaderboard: ScoreEntry[];
   nowPlaying: string | null;
   alert: OverlayAlert | null;
+  /** App language, for the overlay's own labels (game texts arrive translated). */
+  lang: Language;
   updatedAt: number;
 }
 
@@ -205,10 +264,13 @@ export interface TikTokConnectResult {
 
 export interface DesktopApi {
   selectAudioFiles: () => Promise<AudioTrack[]>;
+  /** Saves text (e.g. a sample bank file) where the user picks in a save dialog. */
+  saveTextFile: (name: string, content: string) => Promise<{ ok: boolean; error?: string }>;
   connectTikTok: (username: string) => Promise<TikTokConnectResult>;
   disconnectTikTok: () => Promise<boolean>;
   simulateTikTokEvent: (event: SimulatedEventInput) => Promise<boolean>;
-  onTikTokEvent: (callback: (event: LiveEvent) => void) => () => void;
+  /** LIVE events in batches (every ~100 ms), see src/shared/eventBatch.ts. */
+  onTikTokEvents: (callback: (batch: LiveEventBatch) => void) => () => void;
   onTikTokStatus: (callback: (status: TikTokStatus) => void) => () => void;
   getOverlayInfo: () => Promise<OverlayInfo>;
   /** Fires when the overlay server comes up later (e.g. the port was busy at start). */
@@ -216,6 +278,20 @@ export interface DesktopApi {
   updateOverlay: (state: OverlayState) => void;
   /** Opens (or refreshes) a separate window showing the overlay, for OBS Window Capture. */
   openOverlayWindow: (config: OverlayConfig) => Promise<{ ok: boolean; error?: string }>;
+  closeOverlayWindow: () => Promise<boolean>;
+  /** Fires when the game window opens or is closed (by the app or from the window itself). */
+  onOverlayWindowChange: (callback: (open: boolean) => void) => () => void;
+  /** Clicks in the game window: back to the game list, or pick game number `index` (1-based). */
+  onOverlayWindowAction: (callback: (action: OverlayWindowAction) => void) => () => void;
   /** Zooms the controller UI (0.8–1.6); layout reflows like browser zoom. */
   setUiZoom: (factor: number) => void;
+  /** AI generation (keys stay in main; see src/shared/ai.ts). */
+  aiStatus: () => Promise<AiStatus | null>;
+  /** Saves a provider's API key; null removes it. */
+  aiSetKey: (provider: AiProvider, key: string | null) => Promise<AiResult<{ status: AiStatus }>>;
+  /** Active provider, or a provider's model id ("" = default). */
+  aiSetSettings: (settings: { active?: AiProvider; provider?: AiProvider; model?: string }) => Promise<AiResult<{ status: AiStatus }>>;
+  aiTest: (provider: AiProvider) => Promise<AiResult>;
+  /** Bank lines from the active provider (untrusted: validate before use). */
+  aiGenerate: (request: AiGenerateRequest) => Promise<AiResult<{ lines: string[]; provider: AiProvider; model: string }>>;
 }
