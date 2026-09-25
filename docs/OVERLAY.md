@@ -44,11 +44,13 @@ TikTok LIVE Studio: add a link/browser-type source with the same URL if your ver
 | Game card as **🎮 Chọn game · <group>** list (the active game group, numbered, vote bars, countdown) | "Viewer chọn game" is on and no round is running (see RULES.md) |
 | Leaderboard (top 5) | at least one viewer has points |
 | Now playing | a track is selected |
-| Alerts (follow/join greeting) | a greeting is being shown (3.5 s each) |
+| Alerts (follow / join / like) | transparent items rise from the bottom of the frame to mid-screen and vanish there: follow / join show the viewer's avatar + small `@username` (alternating left / right, 5 s, at most 4 at once, joins ~1 per 1.2 s, follows always shown); likes show only the avatar + ❤️ on the right (3 s, at most 6, ~1 per 0.3 s and 1 per viewer per 2 s). Toggles: Cài đặt chung → 👋 Chào người mới |
 
 The game card renders a generic `OverlayGameView` built by the running game: `headline` (big text), `hint`, `rows` (optional badge / bar / value / highlight), `progress` (HP bar), `teams` (tug-of-war), `race` (lanes) and `wheel` (animated SVG wheel; only live spins animate, a freshly loaded overlay jumps to the result).
 
-All enabled widgets stack in one column (alerts, game, leaderboard, now playing) placed by position/size; the column is designed at 460 px and zoomed to the chosen size, so text scales with it.
+The game, leaderboard and now-playing widgets stack in one column placed by position/size (alerts float over the whole frame instead of taking a slot); the column is designed at 460 px and zoomed to the chosen size, so text scales with it.
+
+The game card never overflows: everything between its header and the hint chips sits in a `FitBox` (`src/overlay/parts.tsx`) that zooms the content down until it fits the card (width always, height too in full screen; never below 45%, below that the bottom fades out). The hint chips (what viewers can comment / send) always show their full text at a readable size: long ones wrap, and the game body above them shrinks instead. In portrait full screen the leaderboard shows the top 3.
 
 **Toàn màn** (`size=full`, `fullStage()` in `src/shared/overlay.ts`): the column fills the whole frame (or the TikTok-safe part when "Tránh vùng TikTok che" is on; picking Toàn màn unchecks it) and position is ignored. The game card stretches to the height left by the other widgets: lists (vote/lobby) share the height (rows up to 110 px, shrinking evenly when long), short content (word tiles, boss, wheel) is centered. Zoom follows the width, but never below a 560 px design height, so on wide frames (16:9) the design canvas gets wide: the game sits on the left, other widgets in a 360 px right column (the game takes the full width when it's alone), and lists with more than 5 rows use two columns.
 
@@ -57,14 +59,15 @@ All enabled widgets stack in one column (alerts, game, leaderboard, now playing)
 - Game-UI theme (casual mobile-game look, pure CSS, no images): cards with a thick dark outline, accent inner frame, glossy top and a 3D base; the game title sits on a ribbon with a moving shine; text uses a cartoon outline (layered `text-shadow`, so older OBS browsers render it too); quiz answers are candy buttons; lists are 3D plates (long lists fill the plate with the vote share); the leaderboard has a gold ribbon and gold/silver/bronze plates; crossword cells are 3D blocks with an orange keyword column; win/start/time-up banners spin light rays behind them. Loop animations stop when the OS asks for reduced motion.
 - Font: **Baloo 2** (variable, OFL, `@fontsource-variable/baloo-2`), bundled into `dist/assets` and served by the overlay server — works offline, Vietnamese included. The controller app uses the same font and theme (candy buttons, outlined panels, game cards with icon tiles).
 - Each game has an accent color (card glow, header strip, countdown ring) and a "how to join" chip row (💬 comment / ❤️ likes / 🎁 gifts) built from its command list.
-- Viewers get a colored initial badge (stable color per name) on leaderboards, race lanes, winners and popups; the leaderboard shows 🥇🥈🥉.
+- Viewers get their TikTok picture (or a colored initial badge, stable color per name) on leaderboards, race lanes, winners and popups; the leaderboard shows 🥇🥈🥉.
+- End of a round: a big congratulations screen with confetti (6.5 s) — the top 3 on a podium (avatar, name, score) for ranking games, or the winner alone in a spotlight with a crown (race). Data: `OverlayEffect.podium` on the `win` effect.
 - Game-specific visuals: letter tiles (Unscramble, Hangman, Ai nhanh tay), Kahoot-style colored answers (quiz, vote), a floating boss that flashes when hit, a tug-of-war rope, colored race lanes with a crown for the leader, a glowing spin wheel.
 - Games emit one-shot effects (`OverlayEffect`: start, hit, score, correct, wrong, win, lose). The overlay shows floating numbers, shakes the card on hits, and full-frame banners with canvas confetti on wins; effects are played once per id and are not replayed when OBS reloads the page.
 - The app plays matching synthesized sounds plus a tick in the last 5 seconds (toggle: Cài đặt chung → 🔊 Âm thanh game). OBS captures them with the app's audio.
 
 ## Game list (lobby)
 
-The game list is drawn as rectangular game tiles in 2 columns (`GameMenu` in `src/overlay/parts.tsx`, data in `OverlayState.game.menu` from `lobbyOverlay`): an icon plate colored by category with the number viewers type as a gold coin, the game name, a vote bar with count and share, and a gold ring + 👑 on the leading game. Long lists scroll inside the card: with the mouse wheel in the game window, and slowly by themselves (pausing at each end, and while the streamer hovers or scrolls) so OBS viewers see every game.
+The game list is drawn as rectangular game tiles in 2 columns (`GameMenu` in `src/overlay/parts.tsx`, data in `OverlayState.game.menu` from `lobbyOverlay`): an icon plate colored by category with the number viewers type as a gold coin, the game name, a vote bar with count and share, and a gold ring + 👑 on the leading game. When voting closes (`menu.decided`), the picked game pulses and the rest dim while the headline says how it was picked (most votes, or a random pick after no votes / a tie). Long lists scroll inside the card: with the mouse wheel in the game window, and slowly by themselves (pausing at each end, and while the streamer hovers or scrolls) so OBS viewers see every game.
 
 ## Standalone game window (Window Capture)
 

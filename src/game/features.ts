@@ -7,6 +7,8 @@ export interface LiveFeatures {
   fanGiftPoints: number;
   welcomeEnabled: boolean;
   welcomeJoins: boolean;
+  /** Likes: the viewer's avatar with a heart rises on the overlay. */
+  welcomeLikes: boolean;
   welcomeSound: boolean;
   chatCommandsEnabled: boolean;
   /** Synthesized game sounds (start, hits, correct, win, countdown ticks). */
@@ -22,7 +24,8 @@ export const DEFAULT_FEATURES: LiveFeatures = {
   fanLikesPerPoint: 20,
   fanGiftPoints: 5,
   welcomeEnabled: true,
-  welcomeJoins: false,
+  welcomeJoins: true,
+  welcomeLikes: true,
   welcomeSound: true,
   chatCommandsEnabled: true,
   gameSounds: true,

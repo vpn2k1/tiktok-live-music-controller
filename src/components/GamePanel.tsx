@@ -22,6 +22,8 @@ interface GamePanelProps {
   remainingMs: number;
   leaderboard: ScoreEntry[];
   onStart: () => void;
+  /** Host switches to another game now (the running round ends, its points count). */
+  onSwitchTo: (id: string) => void;
   onFinish: () => void;
   onCancel: () => void;
   onResetScores: () => void;
@@ -209,7 +211,7 @@ function RoundStatus({ game, view }: { game: GameState; view: OverlayGameView })
             <li key={`${index}-${lane.label}`}>
               <span className="track-number">{index + 1}</span>
               <span className="track-name">{view.race?.icon} {lane.label}</span>
-              <strong>{lane.percent}%</strong>
+              <strong>{lane.value ?? `${lane.percent}%`}</strong>
             </li>
           ))}
         </ol>
@@ -260,6 +262,8 @@ export default function GamePanel(props: GamePanelProps) {
   const dictionaryLanguage = active ? DICTIONARY_GAMES[active.id] : undefined;
   const dictionaryInfo = dictionaryLanguage ? props.dictionaries[dictionaryLanguage] : null;
   const demoRunning = running && bot.enabled;
+  /** Picked in the library while another game runs: offer to switch to it. */
+  const picked = running && props.selectedId !== game.kind ? props.games.find((item) => item.id === props.selectedId) : undefined;
 
   async function handleDictionaryFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
@@ -277,8 +281,9 @@ export default function GamePanel(props: GamePanelProps) {
           {running ? (
             <>
               <span className="countdown big">{game.endsAt == null ? 'LIVE' : formatCountdown(props.remainingMs)}</span>
-              <button className="button primary" onClick={() => props.onFinish()}>{t('⏹ Chốt kết quả')}</button>
-              <button className="button" onClick={props.onCancel}>{t('✕ Huỷ')}</button>
+              <button className="button primary" onClick={() => props.onFinish()} title={t('Chốt ván này; game tự chơi tiếp ván mới')}>{t('⏹ Chốt kết quả')}</button>
+              <button className="button" onClick={props.onCancel} title={t('Huỷ ván này và dừng game')}>{t('✕ Huỷ')}</button>
+              {picked ? <button className="button" onClick={() => props.onSwitchTo(picked.id)}>{t('⏭ Đổi sang {title}', { title: t(picked.title) })}</button> : null}
               {demoRunning ? <button className="button ghost" onClick={() => bot.setEnabled(false)}>{t('Tắt bot')}</button> : null}
             </>
           ) : (

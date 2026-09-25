@@ -1,6 +1,6 @@
 import { t } from '../shared/i18n';
 import type { OverlayRow, ScoreEntry } from '../shared/types';
-import type { PointAward } from './engine';
+import type { EffectInput, PointAward } from './engine';
 import { Scoreboard } from './scoreboard';
 import { pickUnasked } from './types';
 
@@ -185,15 +185,41 @@ export function commitTotals<Q>(state: SeriesState<Q>, awards: PointAward[]): ()
   };
 }
 
-/** Round-end result shared by series games: final ranking message + win/lose effect. */
-export function seriesFinish<S extends SeriesState<unknown>>(state: S, awards: PointAward[], prefix = ''): { state: S; awards: PointAward[]; message: string; effects: { kind: 'win' | 'lose'; text: string; user?: string }[] } {
+/**
+ * Big end-of-round "congratulations": the top 3 on a podium with their names,
+ * avatars and points (one entry = the winner alone in the spotlight).
+ */
+export function podiumEffect(top: { nickname: string; points: number }[], text: string): EffectInput {
+  return podiumOf(top.map((entry) => ({ nickname: entry.nickname, value: pointsText(entry.points) })), text);
+}
+
+/** Podium with game-specific values ("12 wins", "45 s"…), best first. */
+export function podiumOf(top: { nickname: string; value?: string }[], text: string): EffectInput {
+  const podium = top.slice(0, 3).map((entry) => ({ name: entry.nickname, value: entry.value }));
+  return { kind: 'win', text, user: podium[0]?.name, podium };
+}
+
+/** The winner alone in the spotlight (race winner, last survivor…). */
+export function winnerEffect(nickname: string, text: string, value?: string): EffectInput {
+  return { kind: 'win', text, user: nickname, podium: [{ name: nickname, value }] };
+}
+
+/** Podium of the round's top 3, or "round over" when nobody scored. */
+export function roundEndEffect<Q>(state: SeriesState<Q>): EffectInput {
+  const top = state.totals.top(3);
+  return top.length
+    ? podiumEffect(top, t('🏁 Tổng kết {asked} câu', { asked: state.index + 1 }))
+    : { kind: 'lose', text: t('Hết lượt') };
+}
+
+/** Round-end result shared by series games: final ranking message + podium effect. */
+export function seriesFinish<S extends SeriesState<unknown>>(state: S, awards: PointAward[], prefix = ''): { state: S; awards: PointAward[]; message: string; effects: EffectInput[] } {
   const done = { ...state, stage: 'done' as const };
-  const top = state.totals.top(1)[0];
   return {
     state: done,
     awards,
     message: `${prefix}${finalMessage(done)}`,
-    effects: [top ? { kind: 'win', text: `🏆 ${top.nickname}`, user: top.nickname } : { kind: 'lose', text: t('Hết lượt') }]
+    effects: [roundEndEffect(done)]
   };
 }
 

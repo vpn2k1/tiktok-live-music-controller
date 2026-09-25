@@ -2,10 +2,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  closeLobby,
   giftLobby,
   isSwitchCommand,
   lobbyOverlay,
   lobbyRanking,
+  lobbyResultText,
+  LOBBY_RESULT_MS,
   openLobby,
   parseLobbyVote,
   voteLobby
@@ -66,4 +69,39 @@ test('lobbyRanking sorts by votes and the overlay card lists every option', () =
   assert.equal(lobbyOverlay(openLobby(['boss'], 0, null), 0).howTo.length, 1);
   assert.equal(view.title, '🎮 Chọn game');
   assert.equal(lobbyOverlay(openLobby(['boss'], 0, null), 0, ' Giải trí ').title, '🎮 Giải trí');
+});
+
+test('closing the vote: most votes wins; no votes or a tie = random pick, announced first', () => {
+  const voted = closeLobby({ ...openLobby(['a', 'b', 'c'], 0, 10), votes: [1, 4, 2] }, random, 5000);
+  assert.equal(voted.result?.reason, 'votes');
+  assert.equal(voted.result?.ranking[0], 'b');
+  assert.equal(voted.endsAt, 5000 + LOBBY_RESULT_MS, 'the pick is shown before the game starts');
+  assert.equal(closeLobby(voted, random, 9000), voted, 'closing twice changes nothing');
+  assert.equal(voteLobby(voted, 'late', 0, 1, 6000, 20), voted, 'no votes after the close');
+  assert.equal(giftLobby(voted, 'late', 5, 5, 6000, 20), voted);
+
+  const picks = new Set<string>();
+  for (let i = 0; i < 40; i += 1) {
+    const tie = closeLobby({ ...openLobby(['a', 'b', 'c'], 0, 10), votes: [3, 0, 3] }, random, 0);
+    assert.equal(tie.result?.reason, 'tie');
+    assert.deepEqual(tie.result?.tied, [0, 2]);
+    picks.add(tie.result?.ranking[0] ?? '');
+  }
+  assert.deepEqual([...picks].sort(), ['a', 'c'], 'a tie is broken randomly among the tied games only');
+
+  const none = new Set<string>();
+  for (let i = 0; i < 60; i += 1) {
+    const empty = closeLobby(openLobby(['a', 'b', 'c'], 0, 10), random, 0);
+    assert.equal(empty.result?.reason, 'none');
+    none.add(empty.result?.ranking[0] ?? '');
+  }
+  assert.deepEqual([...none].sort(), ['a', 'b', 'c'], 'nobody voted → any game');
+
+  assert.match(lobbyResultText({ ranking: ['a'], reason: 'none', tied: [] }, 'Quiz'), /ngẫu nhiên: Quiz/);
+  assert.match(lobbyResultText({ ranking: ['a'], reason: 'tie', tied: [0, 2] }, 'Quiz'), /Hoà phiếu \(2 game\)/);
+
+  const view = lobbyOverlay(closeLobby({ ...openLobby(['boss', 'quiz'], 0, 10), votes: [0, 0] }, () => 0.9, 0), 5);
+  assert.equal(view.menu?.decided, true);
+  assert.equal(view.menu?.items.filter((item) => item.picked).length, 1);
+  assert.match(view.headline ?? '', /ngẫu nhiên/);
 });

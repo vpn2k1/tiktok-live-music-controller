@@ -3,6 +3,7 @@ import type { PointAward } from '../engine';
 import { Scoreboard } from '../scoreboard';
 import { giftTest, likeTest, view, type GameDefinition } from '../types';
 import { numberLocale, t } from '../../shared/i18n';
+import { podiumOf } from '../series';
 
 /**
  * "Thử thách tim": the whole room fills a heart meter together. Each milestone
@@ -98,7 +99,7 @@ export const likeChallengeGame: GameDefinition<LikeRound, LikeConfig> = {
       consumed: false,
       finish: total >= target(state),
       message: latest ? t('🎉 Đạt {likes} tim: {reward}!', { likes: latest.likes.toLocaleString(numberLocale()), reward: latest.reward }) : undefined,
-      effects: latest ? [{ kind: 'score', text: `🎉 ${latest.reward}` }] : [{ kind: 'score', text: `❤️ +${added}`, user: input.nickname }],
+      effects: latest ? [{ kind: 'score', text: `🎉 ${latest.reward}` }] : [{ kind: 'score', text: '❤️', user: input.nickname }],
       state: { ...state, total, reached },
       commit: () => state.likers.add(input.user, input.nickname, added)
     };
@@ -118,7 +119,9 @@ export const likeChallengeGame: GameDefinition<LikeRound, LikeConfig> = {
           target: target(state).toLocaleString(numberLocale()),
           reached: state.reached
         }),
-      effects: [done ? { kind: 'win', text: t('❤️ Hoàn thành!'), user: top[0]?.nickname } : { kind: 'lose', text: `❤️ ${state.total}` }]
+      effects: [done && top.length
+        ? podiumOf(top.slice(0, 3).map((entry) => ({ nickname: entry.nickname, value: `❤️ ${entry.points.toLocaleString(numberLocale())}` })), t('❤️ Hoàn thành!'))
+        : done ? { kind: 'win', text: t('❤️ Hoàn thành!') } : { kind: 'lose', text: `❤️ ${state.total}` }]
     };
   },
 

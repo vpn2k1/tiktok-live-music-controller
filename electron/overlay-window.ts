@@ -92,7 +92,9 @@ export function openOverlayWindow(baseUrl: string, allowedOrigins: string[], raw
       backgroundColor: transparent ? '#00000000' : OVERLAY_BACKGROUNDS[config.background],
       // Own in-memory session: zoom is per origin, and in dev the overlay shares the
       // controller's Vite origin, so a shared session would shrink the main window too.
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: 'overlay-window' }
+      // No background throttling: OBS may capture the window while it is covered, and
+      // the overlay's animations and timers must keep running then.
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: 'overlay-window', backgroundThrottling: false }
     });
     const window = overlayWindow;
     window.setAspectRatio(config.width / config.height);

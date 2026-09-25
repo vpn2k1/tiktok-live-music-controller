@@ -21,6 +21,8 @@ import { aiStatus, generateAi, setAiKey, setAiSettings, testAi } from './ai';
 import { publishOverlay, startOverlayServer, stopOverlayServer } from './overlay-server';
 import { closeOverlayWindow, onOverlayWindowAction, onOverlayWindowChange, openOverlayWindow } from './overlay-window';
 import type { OverlayWindowAction } from '../src/shared/overlay';
+import { diagnoseConnectError, isTikTokUsername, tiktokUsername } from '../src/shared/tiktokErrors';
+import { avatarFromUser } from '../src/shared/avatar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -98,6 +100,8 @@ function normalizeEvent(type: string, rawData: unknown = {}, simulated = false):
   const user = nestedRecord(data, 'user');
   const gift = nestedRecord(data, 'gift');
   const giftDetails = nestedRecord(data, 'giftDetails');
+  // Profile picture: only HTTPS images on TikTok's CDN pass (see src/shared/avatar.ts).
+  const avatar = avatarFromUser(user, data.profilePictureUrl);
 
   const base = {
     id: crypto.randomUUID(),
@@ -105,6 +109,7 @@ function normalizeEvent(type: string, rawData: unknown = {}, simulated = false):
     user: usernameOf(data),
     nickname: stringValue(user.nickname || data.nickname || usernameOf(data)),
     at: Date.now(),
+    ...(avatar ? { avatar } : {}),
     ...(simulated ? { simulated: true } : {})
   };
 
@@ -175,9 +180,13 @@ async function disconnectTikTok(): Promise<boolean> {
 }
 
 async function connectTikTok(rawUsername: string) {
-  const username = String(rawUsername || '').trim().replace(/^@/, '');
+  // Accepts "@name", "name" or a tiktok.com/@name/live link.
+  const username = tiktokUsername(rawUsername);
   if (!username) {
     throw new Error('Hãy nhập username TikTok.');
+  }
+  if (!isTikTokUsername(username)) {
+    throw new Error('Username TikTok chỉ gồm chữ không dấu, số, "_" và "." (vd: ten_kenh.live). Hãy nhập username, không phải tên hiển thị.');
   }
 
   await disconnectTikTok();
@@ -208,7 +217,7 @@ async function connectTikTok(rawUsername: string) {
       emitStatus('connected', { username, message: 'Cảnh báo từ TikTok: {error}'.replace('{error}', () => errorText(error)) });
       return;
     }
-    emitStatus('error', { username, message: errorText(error) });
+    emitStatus('error', { username, message: error instanceof Error ? diagnoseConnectError(error) : errorText(error) });
   });
 
   connection.on(WebcastEvent.CHAT, (data: unknown) => emitLiveEvent('chat', data));
@@ -239,11 +248,11 @@ async function connectTikTok(rawUsername: string) {
     };
   } catch (error) {
     if (liveConnection === connection) liveConnection = null;
-    emitStatus('error', {
-      username,
-      message: error instanceof Error ? error.message : String(error)
-    });
-    throw error;
+    // The connector's "Failed to retrieve Room ID from all sources." hides the real
+    // reason in error.config.requestErrs; show the cause and each source's detail.
+    const message = diagnoseConnectError(error);
+    emitStatus('error', { username, message });
+    throw new Error(message);
   }
 }
 

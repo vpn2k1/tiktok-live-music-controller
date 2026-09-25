@@ -3,6 +3,7 @@ import {
   current,
   nextQuestion,
   pickSet,
+  podiumEffect,
   progressLabel,
   rankingRows,
   resultHint,
@@ -163,7 +164,9 @@ export const goldenBellGame: GameDefinition<GoldenBellRound, GoldenBellConfig> =
           ? t('🔔 {names} rung chuông vàng! (+{points})', { names, points: config.winPoints })
           : t('🔔 {count} người trụ lại: {names} (+{points})', { count: winners.length, names: `${names}${winners.length > 3 ? '…' : ''}`, points: config.winPoints })
         : t('🔔 Không ai trụ lại đến cuối!'),
-      effects: [winners[0] ? { kind: 'win', text: t('🔔 Rung chuông vàng!'), user: winners[0].nickname } : { kind: 'lose', text: t('Không ai trụ lại') }]
+      effects: [winners[0]
+        ? podiumEffect(winners.map((winner) => done.totals.get(winner.user) ?? { ...winner, points: 0 }).sort((a, b) => b.points - a.points), t('🔔 Rung chuông vàng!'))
+        : { kind: 'lose', text: t('Không ai trụ lại') }]
     };
   },
 

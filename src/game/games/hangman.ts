@@ -7,6 +7,7 @@ import {
   nextQuestion,
   pickSet,
   rankingRows,
+  roundEndEffect,
   seconds,
   SERIES_SETTINGS,
   speedPoints,
@@ -199,12 +200,11 @@ export const hangmanGame: GameDefinition<HangmanRound, HangmanConfig> = {
     const awards = asking ? wordAwards(state, config) : [];
     for (const award of awards) state.totals.add(award.user, award.nickname, award.points);
     const done: HangmanRound = { ...state, stage: 'done', guessed: [...new Set([...state.guessed, ...current(state).word.split('')])] };
-    const top = state.totals.top(1)[0];
     return {
       state: done,
       awards,
       message: `${asking ? `${wordMessage(state)} ` : ''}${finalMessage(done)}`,
-      effects: [top ? { kind: 'win', text: `🏆 ${top.nickname}`, user: top.nickname } : { kind: 'lose', text: t('Hết lượt') }]
+      effects: [roundEndEffect(done)]
     };
   },
 

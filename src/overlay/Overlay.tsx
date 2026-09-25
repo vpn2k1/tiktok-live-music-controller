@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNow } from '../hooks/useNow';
 import {
   fullStage,
@@ -15,10 +15,11 @@ import {
   type OverlayWindowAction,
   type StagePosition
 } from '../shared/overlay';
+import { safeAvatarUrl } from '../shared/avatar';
 import { setLanguage, t } from '../shared/i18n';
 import type { OverlayState } from '../shared/types';
-import { Confetti, EffectBanner, Popups, useEffectPlayer } from './effects';
-import { AnswerTiles, Avatar, CardGrid, CountdownRing, Crossword, GameMenu, LetterTiles, RaceTrack, TugOfWar, Wheel } from './parts';
+import { AlertFeed, Confetti, EffectBanner, Popups, useEffectPlayer } from './effects';
+import { AnswerTiles, Avatar, AvatarContext, CardGrid, CountdownRing, Crossword, FitBox, GameMenu, LetterTiles, RaceTrack, TugOfWar, Wheel } from './parts';
 
 function isOverlayState(value: unknown): value is OverlayState {
   if (!value || typeof value !== 'object') return false;
@@ -173,6 +174,17 @@ function WindowControls({ menuOpen }: { menuOpen: boolean }) {
   );
 }
 
+/** Profile pictures from the state, keeping only TikTok CDN HTTPS links (the CSP allows no others). */
+function checkedAvatars(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [name, url] of Object.entries(raw as Record<string, unknown>).slice(0, 64)) {
+    const safe = safeAvatarUrl(url);
+    if (safe) out[name] = safe;
+  }
+  return out;
+}
+
 export default function Overlay() {
   const [config] = useState(() => parseOverlayConfig(window.location.search));
   const [windowMode] = useState(() => new URLSearchParams(window.location.search).get(OVERLAY_WINDOW_PARAM) === '1');
@@ -180,6 +192,7 @@ export default function Overlay() {
   const running = state?.game.phase === 'running' && state.game.endsAt != null;
   const now = useNow(running);
   const fx = useEffectPlayer(state?.effects ?? []);
+  const avatars = useMemo(() => checkedAvatars(state?.avatars), [state?.avatars]);
 
   useEffect(() => {
     document.body.style.background = OVERLAY_BACKGROUNDS[config.background];
@@ -198,18 +211,75 @@ export default function Overlay() {
     );
   }
 
-  const { game, leaderboard, nowPlaying, alert } = state;
+  const { game, leaderboard, nowPlaying, alerts } = state;
   const remaining = running && game.endsAt != null ? Math.max(0, game.endsAt - now) : 0;
   const totalMs = game.endsAt != null && game.timerStartedAt != null ? game.endsAt - game.timerStartedAt : 0;
   const headlineStyle = game.style?.headline ?? 'text';
 
+  /** Headline, hint and the game's own visuals (wheel, crossword…), shown above the rows or the game list. */
+  const intro = (
+    <>
+      {game.headline ? (
+        headlineStyle === 'tiles' ? <LetterTiles text={game.headline} />
+          : headlineStyle === 'boss' ? <div className="ov-boss">{game.headline}</div>
+            : <div className="ov-headline">{game.headline}</div>
+      ) : null}
+      {game.hint ? <p className="ov-hint">{game.hint}</p> : null}
+
+      {game.progress ? (
+        <div className="ov-progress">
+          <div className="ov-progress-label">
+            <span>{game.progress.label}</span>
+            <span>{game.progress.value} / {game.progress.max}</span>
+          </div>
+          <span className="ov-bar large hp">
+            <span style={{ width: `${Math.min(100, Math.max(0, (game.progress.value / Math.max(1, game.progress.max)) * 100))}%` }} />
+          </span>
+        </div>
+      ) : null}
+
+      {game.teams ? <TugOfWar teams={game.teams} /> : null}
+      {game.race ? <RaceTrack race={game.race} /> : null}
+      {game.wheel ? <Wheel wheel={game.wheel} /> : null}
+      {game.crossword ? <Crossword crossword={game.crossword} /> : null}
+      {game.cards ? <CardGrid cards={game.cards} /> : null}
+    </>
+  );
+  const rows = (
+    <>
+      {game.rows.length ? (
+        game.style?.rows === 'quiz' ? <AnswerTiles rows={game.rows} /> : (
+          <ol className={`ov-options ${game.rows.length > 4 ? 'many' : ''}`}>
+            {game.rows.map((row, index) => (
+              <li
+                key={rowKey(game.rows, index)}
+                className={`ov-option ${row.highlight ? 'highlight' : ''} ${row.badge ? '' : 'no-badge'}`}
+                style={row.percent != null ? { '--pct': `${row.percent}%` } as CSSProperties : undefined}
+              >
+                {row.badge ? <span className="ov-option-key">{row.badge}</span> : null}
+                <span className="ov-option-body">
+                  <span className="ov-option-label">{row.avatar ? <Avatar name={row.avatar} size={22} /> : null}{row.label}</span>
+                  {row.percent != null ? <span className="ov-bar"><span style={{ width: `${row.percent}%` }} /></span> : null}
+                </span>
+                {row.value != null ? <span className="ov-option-votes">{row.value}</span> : null}
+              </li>
+            ))}
+          </ol>
+        )
+      ) : null}
+    </>
+  );
+  const message = game.message ? <p className="ov-message">{game.message}</p> : null;
+  /** What viewers can comment / send, in full (chips wrap instead of being cut). */
+  const howTo = game.phase === 'running' && game.howTo.length ? (
+    <div className="ov-howto">
+      {game.howTo.map((chip) => <span key={chip.text}><em>{chip.icon}</em><span className="ov-howto-text">{chip.text}</span></span>)}
+    </div>
+  ) : null;
+
   const cards: Record<OverlayWidget, ReactNode> = {
-    alerts: alert ? (
-      <section key={alert.id} className={`ov-card ov-alert ${alert.kind}`}>
-        <span className="ov-alert-icon">{alert.kind === 'follow' ? '💖' : alert.kind === 'join' ? '👋' : '💬'}</span>
-        <span>{alert.text}</span>
-      </section>
-    ) : null,
+    // Follow / join bubbles float over the stage (see `feed` below) instead of taking a slot.
+    alerts: null,
     game: game.phase !== 'idle' ? (
       <section
         // Alternating class names restart the shake animation without remounting the card.
@@ -228,61 +298,22 @@ export default function Overlay() {
           )}
         </header>
 
-        {game.headline ? (
-          headlineStyle === 'tiles' ? <LetterTiles text={game.headline} />
-            : headlineStyle === 'boss' ? <div className="ov-boss">{game.headline}</div>
-              : <div className="ov-headline">{game.headline}</div>
-        ) : null}
-        {game.hint ? <p className="ov-hint">{game.hint}</p> : null}
-
-        {game.progress ? (
-          <div className="ov-progress">
-            <div className="ov-progress-label">
-              <span>{game.progress.label}</span>
-              <span>{game.progress.value} / {game.progress.max}</span>
-            </div>
-            <span className="ov-bar large hp">
-              <span style={{ width: `${Math.min(100, Math.max(0, (game.progress.value / Math.max(1, game.progress.max)) * 100))}%` }} />
-            </span>
-          </div>
-        ) : null}
-
-        {game.teams ? <TugOfWar teams={game.teams} /> : null}
-        {game.race ? <RaceTrack race={game.race} /> : null}
-        {game.wheel ? <Wheel wheel={game.wheel} /> : null}
-        {game.crossword ? <Crossword crossword={game.crossword} /> : null}
-        {game.cards ? <CardGrid cards={game.cards} /> : null}
-
         {game.menu ? (
-          <GameMenu menu={game.menu} onPick={pickable ? (number) => sendWindowAction({ type: 'pick', index: number }) : undefined} />
-        ) : game.rows.length ? (
-          game.style?.rows === 'quiz' ? <AnswerTiles rows={game.rows} /> : (
-            <ol className={`ov-options ${game.rows.length > 4 ? 'many' : ''}`}>
-              {game.rows.map((row, index) => (
-                <li
-                  key={rowKey(game.rows, index)}
-                  className={`ov-option ${row.highlight ? 'highlight' : ''} ${row.badge ? '' : 'no-badge'}`}
-                  style={row.percent != null ? { '--pct': `${row.percent}%` } as CSSProperties : undefined}
-                >
-                  {row.badge ? <span className="ov-option-key">{row.badge}</span> : null}
-                  <span className="ov-option-body">
-                    <span className="ov-option-label">{row.avatar ? <Avatar name={row.avatar} size={22} /> : null}{row.label}</span>
-                    {row.percent != null ? <span className="ov-bar"><span style={{ width: `${row.percent}%` }} /></span> : null}
-                  </span>
-                  {row.value != null ? <span className="ov-option-votes">{row.value}</span> : null}
-                </li>
-              ))}
-            </ol>
-          )
-        ) : null}
-
-        {game.message ? <p className="ov-message">{game.message}</p> : null}
-
-        {game.phase === 'running' && game.howTo.length ? (
-          <div className="ov-howto">
-            {game.howTo.map((chip) => <span key={chip.text}><em>{chip.icon}</em>{chip.text}</span>)}
-          </div>
-        ) : null}
+          <>
+            {intro}
+            <GameMenu menu={game.menu} onPick={pickable ? (number) => sendWindowAction({ type: 'pick', index: number }) : undefined} />
+            {message}
+            {howTo}
+          </>
+        ) : (
+          // The game body shrinks to fit the space above the hint chips (never overflows the card).
+          <FitBox fitHeight={config.size === 'full' && config.mode !== 'stack'}>
+            {intro}
+            {rows}
+            {message}
+          </FitBox>
+        )}
+        {game.menu ? null : howTo}
       </section>
     ) : null,
     leaderboard: leaderboard.length ? (
@@ -309,19 +340,27 @@ export default function Overlay() {
   };
 
   const visible = config.widgets.filter((widget) => cards[widget]);
+  // Follow / join bubbles and like hearts rise from the bottom of the frame (3%) to mid-screen (+47%) and vanish.
+  const frameZoom = config.mode === 'stack' ? 1 : config.size === 'full' ? fullStage(config).zoom : stageWidth(config) / STAGE_BASE_WIDTH;
+  const feed = config.widgets.includes('alerts')
+    ? <AlertFeed alerts={alerts ?? []} rise={(config.mode === 'stack' ? 360 : config.height * 0.47) / frameZoom} />
+    : null;
 
   return (
-    <Stage
-      config={config}
-      layers={(
-        <>
-          <Confetti fire={fx.confetti} />
-          <div className="ov-banner-layer"><EffectBanner effect={fx.banner} /></div>
-          {controls}
-        </>
-      )}
-    >
-      {visible.map((widget) => <div key={widget} className={`ov-slot ov-slot-${widget}`}>{cards[widget]}</div>)}
-    </Stage>
+    <AvatarContext.Provider value={avatars}>
+      <Stage
+        config={config}
+        layers={(
+          <>
+            {feed}
+            <Confetti fire={fx.confetti} />
+            <div className="ov-banner-layer"><EffectBanner effect={fx.banner} /></div>
+            {controls}
+          </>
+        )}
+      >
+        {visible.map((widget) => <div key={widget} className={`ov-slot ov-slot-${widget}`}>{cards[widget]}</div>)}
+      </Stage>
+    </AvatarContext.Provider>
   );
 }

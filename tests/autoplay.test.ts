@@ -4,17 +4,19 @@ import { test } from 'node:test';
 import {
   activeGroup,
   addGifts,
-  autoPlayStep,
+  createLoop,
   createSession,
   DEFAULT_AUTOPLAY,
   EMPTY_GIFT_SWITCH,
   giftMatches,
   LIVE_WARNING_MS,
+  loopStep,
   MAX_GROUPS,
   nextGameOrder,
   normalizeAutoPlay,
   normalizeGroups,
-  rotation
+  rotation,
+  sessionStep
 } from '../src/game/autoplay';
 
 const IDS = ['a', 'b', 'c', 'd'];
@@ -100,47 +102,55 @@ test('addGifts sums gifts to the threshold, then ignores gifts during the cooldo
   assert.equal(r.switch, true);
 });
 
-test('autoPlayStep: first game, round gap, slot end, warning and LIVE end', () => {
-  const s = settings({ liveMinutes: 30, switchBy: 'time', switchMinutes: 5, roundGapSeconds: 10 });
-  const start = createSession(s, 0);
-  assert.equal(start.liveEndsAt, 30 * 60_000);
-  assert.equal(autoPlayStep(start, s, false, 0), 'switch');
+test('games play on forever by default; old settings migrate to it', () => {
+  assert.equal(DEFAULT_AUTOPLAY.switchBy, 'command');
+  assert.equal(settings({ switchBy: 'weird' }).switchBy, 'command');
+  assert.equal(settings({ switchBy: 'rounds' }).switchBy, 'rounds');
+  // Version 1 defaulted to "switch after 1 round": stored settings without a version play on instead.
+  assert.equal(normalizeAutoPlay({ switchBy: 'rounds', roundsPerGame: 1 }, GAMES).switchBy, 'command');
+  assert.equal(normalizeAutoPlay({ switchBy: 'time' }, GAMES).switchBy, 'command');
 
-  const playing = { ...start, gameId: 'a', slotEndsAt: 5 * 60_000 };
-  assert.equal(autoPlayStep(playing, s, true, 60_000), 'none');
-  // Round ended inside the slot: replay the same game after the gap.
-  const idle = { ...playing, idleSince: 60_000 };
-  assert.equal(autoPlayStep(idle, s, false, 65_000), 'none');
-  assert.equal(autoPlayStep(idle, s, false, 70_000), 'restart');
-  // Slot over: finish the running round, then switch after the gap.
-  assert.equal(autoPlayStep(playing, s, true, 5 * 60_000), 'finish');
-  const finished = { ...playing, idleSince: 5 * 60_000 };
-  assert.equal(autoPlayStep(finished, s, false, 5 * 60_000 + 5000), 'none');
-  assert.equal(autoPlayStep(finished, s, false, 5 * 60_000 + 10_000), 'switch');
-
-  assert.equal(autoPlayStep(playing, s, true, 30 * 60_000 - LIVE_WARNING_MS), 'warn');
-  assert.equal(autoPlayStep({ ...playing, warned: true, slotEndsAt: Infinity }, s, true, 30 * 60_000 - 1000), 'none');
-  assert.equal(autoPlayStep(playing, s, true, 30 * 60_000), 'end');
+  const s = settings({ roundGapSeconds: 8 });
+  const loop = { ...createLoop('a', 0), idleSince: 1000, roundsPlayed: 999 };
+  assert.equal(loopStep(createLoop('a', 0), s, true, 10 * 3_600_000), 'none', 'a running round is never cut');
+  assert.equal(loopStep(loop, s, false, 5000), 'none', 'the result stays on screen for the gap');
+  assert.equal(loopStep(loop, s, false, 9000), 'restart', 'then the same game plays another round, forever');
+  assert.equal(loopStep({ ...loop, since: -10 * 3_600_000 }, s, false, 9000), 'restart');
 });
 
-test('autoPlayStep "rounds": replay until N rounds, never cut a round short', () => {
-  const s = settings({ switchBy: 'rounds', roundsPerGame: 2, roundGapSeconds: 5 });
-  const playing = { ...createSession(s, 0), gameId: 'a', slotEndsAt: 0 };
-  assert.equal(autoPlayStep(playing, s, true, 999_999), 'none', 'no time limit on a running round');
-  assert.equal(autoPlayStep({ ...playing, idleSince: 1000, roundsPlayed: 1 }, s, false, 6000), 'restart');
-  assert.equal(autoPlayStep({ ...playing, idleSince: 1000, roundsPlayed: 2 }, s, false, 3000), 'none', 'result stays for the gap');
-  assert.equal(autoPlayStep({ ...playing, idleSince: 1000, roundsPlayed: 2 }, s, false, 6000), 'switch');
-  assert.equal(DEFAULT_AUTOPLAY.switchBy, 'rounds');
-  assert.equal(settings({ switchBy: 'weird' }).switchBy, 'rounds');
+test('a switch request waits for the round to end, then the result gap', () => {
+  const s = settings({ roundGapSeconds: 5 });
+  const pending = { ...createLoop('a', 0), switchPending: true };
+  assert.equal(loopStep(pending, s, true, 60_000), 'none', 'the round plays to its end');
+  assert.equal(loopStep({ ...pending, idleSince: 60_000 }, s, false, 62_000), 'none', 'the winner is celebrated first');
+  assert.equal(loopStep({ ...pending, idleSince: 60_000 }, s, false, 65_000), 'switch');
 });
 
-test('autoPlayStep: no LIVE limit never ends; short LIVE skips the warning', () => {
-  const unlimited = settings({ liveMinutes: 0 });
-  const session = { ...createSession(unlimited, 0), gameId: 'a', slotEndsAt: Infinity };
-  assert.equal(session.liveEndsAt, null);
-  assert.equal(autoPlayStep(session, unlimited, true, 10 * 3_600_000), 'none');
+test('optional switch rules: after N rounds or M minutes, still at a round end', () => {
+  const rounds = settings({ switchBy: 'rounds', roundsPerGame: 2, roundGapSeconds: 5 });
+  const loop = createLoop('a', 0);
+  assert.equal(loopStep(loop, rounds, true, 999_999), 'none', 'no time limit on a running round');
+  assert.equal(loopStep({ ...loop, idleSince: 1000, roundsPlayed: 1 }, rounds, false, 6000), 'restart');
+  assert.equal(loopStep({ ...loop, idleSince: 1000, roundsPlayed: 2 }, rounds, false, 3000), 'none', 'result stays for the gap');
+  assert.equal(loopStep({ ...loop, idleSince: 1000, roundsPlayed: 2 }, rounds, false, 6000), 'switch');
 
-  const short = settings({ liveMinutes: 3 });
-  const shortSession = { ...createSession(short, 0), gameId: 'a', slotEndsAt: Infinity };
-  assert.equal(autoPlayStep(shortSession, short, true, 60_000), 'none');
+  const time = settings({ switchBy: 'time', switchMinutes: 5, roundGapSeconds: 10 });
+  assert.equal(loopStep(loop, time, true, 9 * 60_000), 'none', 'time is up but the round finishes first');
+  assert.equal(loopStep({ ...loop, idleSince: 60_000 }, time, false, 70_000), 'restart');
+  assert.equal(loopStep({ ...loop, idleSince: 5 * 60_000 }, time, false, 5 * 60_000 + 10_000), 'switch');
+});
+
+test('sessionStep: warning and LIVE end; no limit never ends', () => {
+  const s = settings({ liveMinutes: 30 });
+  const session = createSession(s, 0);
+  assert.equal(session.liveEndsAt, 30 * 60_000);
+  assert.equal(sessionStep(session, 60_000), 'none');
+  assert.equal(sessionStep(session, 30 * 60_000 - LIVE_WARNING_MS), 'warn');
+  assert.equal(sessionStep({ ...session, warned: true }, 30 * 60_000 - 1000), 'none');
+  assert.equal(sessionStep(session, 30 * 60_000), 'end');
+
+  const unlimited = createSession(settings({ liveMinutes: 0 }), 0);
+  assert.equal(unlimited.liveEndsAt, null);
+  assert.equal(sessionStep(unlimited, 10 * 3_600_000), 'none');
+  assert.equal(sessionStep(createSession(settings({ liveMinutes: 3 }), 0), 60_000), 'none', 'short LIVE skips the warning');
 });

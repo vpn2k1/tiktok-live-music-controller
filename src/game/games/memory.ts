@@ -1,6 +1,7 @@
 import { checkBankLines } from '../bankFile';
 import { chatTest, commandArgument, ranked, shuffle, view, type GameCategory, type GameDefinition } from '../types';
 import { t } from '../../shared/i18n';
+import { podiumOf } from '../series';
 
 /**
  * "Lật hình ghép cặp": face-down cards hide pairs. A viewer comments two
@@ -135,7 +136,8 @@ export function createMemoryGame(options: MemoryOptions): GameDefinition<MemoryR
     },
 
     finish(state) {
-      const best = ranked(Object.entries(state.finders).map(([user, entry]) => ({ user, ...entry })), (entry) => entry.pairs)[0];
+      const finders = ranked(Object.entries(state.finders).map(([user, entry]) => ({ user, ...entry })), (entry) => entry.pairs);
+      const best = finders[0];
       const found = state.matched.filter(Boolean).length / 2;
       return {
         state: { ...state, peek: null, matched: state.faces.map(() => true) },
@@ -143,7 +145,9 @@ export function createMemoryGame(options: MemoryOptions): GameDefinition<MemoryR
         message: allFound(state)
           ? `${t('🎉 Tìm đủ {found} cặp!', { found })}${best ? ` ${t('Giỏi nhất: {name} ({pairs} cặp)', { name: best.nickname, pairs: best.pairs })}` : ''}`
           : t('⏰ Hết giờ! Tìm được {found}/{total} cặp.', { found, total: state.faces.length / 2 }),
-        effects: [best ? { kind: 'win', text: t('🃏 {pairs} cặp', { pairs: best.pairs }), user: best.nickname } : { kind: 'lose', text: t('Hết giờ') }]
+        effects: [best
+          ? podiumOf(finders.slice(0, 3).map((entry) => ({ nickname: entry.nickname, value: t('🃏 {pairs} cặp', { pairs: entry.pairs }) })), t('🃏 Trí nhớ siêu đỉnh'))
+          : { kind: 'lose', text: t('Hết giờ') }]
       };
     },
 

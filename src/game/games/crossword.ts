@@ -3,7 +3,7 @@ import { checkBankLines } from '../bankFile';
 import { CROSSWORD_EN, CROSSWORD_VI } from '../content/crossword';
 import type { PointAward } from '../engine';
 import { Scoreboard } from '../scoreboard';
-import { AnswerBook, fastestRows, pickSet, rankingRows, resultHint, seconds, speedPoints, type QuestionResult } from '../series';
+import { AnswerBook, fastestRows, pickSet, podiumEffect, rankingRows, resultHint, seconds, speedPoints, type QuestionResult } from '../series';
 import { foldText } from '../text';
 import { chatTest, commandArgument, view, type GameDefinition } from '../types';
 import { t } from '../../shared/i18n';
@@ -347,7 +347,7 @@ export const crosswordGame: GameDefinition<CrosswordRound, CrosswordConfig> = {
       message: solver
         ? t('🎉 {name} đoán ra từ khóa “{keyword}” (+{points})!', { name: solver.nickname, keyword: state.puzzle.keyword, points: solver.points })
         : `${t('🔑 Từ khóa là “{keyword}”.', { keyword: state.puzzle.keyword })}${winner ? ` ${t('🏆 {name} {points}đ', { name: winner.nickname, points: winner.points })}` : ''}`,
-      effects: [winner ? { kind: 'win', text: `🏆 ${winner.nickname}`, user: winner.nickname } : { kind: 'lose', text: state.puzzle.keyword }]
+      effects: [winner ? podiumEffect(done.totals.top(3), t('🔑 Từ khóa: {keyword}', { keyword: state.puzzle.keyword })) : { kind: 'lose', text: state.puzzle.keyword }]
     };
   },
 

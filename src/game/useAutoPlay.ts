@@ -5,26 +5,31 @@ import type { GamePhase, LiveEvent } from '../shared/types';
 import {
   activeGroup,
   addGifts,
-  autoPlayStep,
+  createLoop,
   createSession,
   EMPTY_GIFT_SWITCH,
   giftMatches,
+  LIVE_WARNING_MS,
+  loopStep,
   nextGameOrder,
   normalizeAutoPlay,
   rotation,
+  sessionStep,
   type AutoPlaySession,
   type AutoPlaySettings,
   type GiftSwitchState,
-  LIVE_WARNING_MS
+  type PlayLoop
 } from './autoplay';
 import type { GameState } from './engine';
 import {
+  closeLobby,
   giftLobby,
   isSwitchCommand,
   lobbyOverlay,
-  lobbyRanking,
+  lobbyResultText,
   openLobby,
   parseLobbyVote,
+  startLobbyTimer,
   voteLobby,
   type LobbyState
 } from './lobby';
@@ -40,6 +45,8 @@ interface AutoPlayOptions {
   getGame: () => GameState;
   /** Rendered round phase, so the lobby opens/closes with it. */
   phase: GamePhase;
+  /** Rendered cancel count: a cancelled round (Huỷ / !cancel) stops the game. */
+  cancels: number;
   selectedId: string;
   /** Starts a game; false when it can't (e.g. needs a playlist). */
   start: (id: string) => boolean;
@@ -68,25 +75,34 @@ function titleOf(id: string | null): string {
 }
 
 /**
- * Auto host + game picker: plays games for the planned LIVE length, switching
- * game on a timer, on a gift or on `!doigame`. With the lobby on, the next game
- * is voted by viewers on an overlay list instead of following the rotation.
+ * Game host. A started game plays round after round, without end (the play
+ * loop): each round's result is celebrated, then the next round starts after
+ * the round gap. A gift, `!doigame` or the switch rule (rounds / minutes)
+ * marks a switch; it happens when the current round ends, never mid-round.
+ * Then the game list opens for viewers to vote (no votes or a tie = random
+ * pick), or the next game of the group starts. The host can switch at once
+ * from the app. The auto session adds the LIVE length and starts the first
+ * game by itself.
  */
 export function useAutoPlay(options: AutoPlayOptions) {
   const [settings, setSettingsState] = useState<AutoPlaySettings>(loadSettings);
   const [session, setSessionState] = useState<AutoPlaySession | null>(null);
+  const [loop, setLoopState] = useState<PlayLoop | null>(null);
   const [gift, setGiftState] = useState<GiftSwitchState>(EMPTY_GIFT_SWITCH);
   const [lobby, setLobbyState] = useState<LobbyState | null>(null);
+  /** The LIVE ended: don't open the list again until the host plays something. */
+  const [halted, setHalted] = useState(false);
 
   const optionsRef = useRef(options);
   const settingsRef = useRef(settings);
   const sessionRef = useRef(session);
+  const loopRef = useRef(loop);
   const giftRef = useRef(gift);
   const lobbyRef = useRef(lobby);
   /** The list was opened by the host (☰ in the game window): it stays even with voting turned off. */
   const manualLobby = useRef(false);
-  /** Viewers who typed !doigame during the round that started at `round`. */
-  const switchVotes = useRef<{ round: number | null; users: Set<string> }>({ round: null, users: new Set() });
+  /** Viewers who typed !doigame for the game chosen at `since`. */
+  const switchVotes = useRef<{ since: number | null; users: Set<string> }>({ since: null, users: new Set() });
 
   useEffect(() => {
     optionsRef.current = options;
@@ -105,9 +121,14 @@ export function useAutoPlay(options: AutoPlayOptions) {
     setSessionState(next);
   }, []);
 
-  const patchSession = useCallback((patch: Partial<AutoPlaySession>) => {
-    if (sessionRef.current) setSession({ ...sessionRef.current, ...patch });
-  }, [setSession]);
+  const setLoop = useCallback((next: PlayLoop | null) => {
+    loopRef.current = next;
+    setLoopState(next);
+  }, []);
+
+  const patchLoop = useCallback((patch: Partial<PlayLoop>) => {
+    if (loopRef.current) setLoop({ ...loopRef.current, ...patch });
+  }, [setLoop]);
 
   const setGift = useCallback((next: GiftSwitchState) => {
     giftRef.current = next;
@@ -135,41 +156,21 @@ export function useAutoPlay(options: AutoPlayOptions) {
     optionsRef.current.onAction(t('LIVE thêm {minutes} phút', { minutes }));
   }, [setSession]);
 
-  /** Starts the first game from `candidates` that can start; a new game gets a full slot. */
+  /** Starts the first game from `candidates` that can start; the play loop follows it. */
   const startFirst = useCallback((candidates: string[]): string | null => {
     for (const id of candidates) {
       if (!optionsRef.current.start(id)) continue;
-      if (sessionRef.current) {
-        patchSession({ gameId: id, slotEndsAt: Date.now() + settingsRef.current.switchMinutes * 60_000, idleSince: null, roundsPlayed: 0 });
-      }
+      setLoop(createLoop(id, Date.now()));
       return id;
     }
     return null;
-  }, [patchSession]);
+  }, [setLoop]);
 
-  /** Candidates after the current game (or, for the first game, the selected one first). */
-  const candidates = useCallback((first: boolean): string[] => {
-    const { getGame: current, selectedId } = optionsRef.current;
-    const game = current();
-    const list = rotation(settingsRef.current, GAME_IDS);
-    const currentId = game.phase === 'running' ? game.kind : sessionRef.current?.gameId ?? selectedId;
-    const order = nextGameOrder(list, currentId, settingsRef.current.order, Math.random);
-    if (first && currentId && list.includes(currentId)) return [currentId, ...order.filter((id) => id !== currentId)];
-    return order;
-  }, []);
-
-  const stop = useCallback((message = t('Đã tắt tự động chuyển game')) => {
+  const stop = useCallback((message = t('Đã tắt tự động')) => {
     if (!sessionRef.current) return;
     setSession(null);
     optionsRef.current.onAction(message);
   }, [setSession]);
-
-  /** Starts the next rotation game now; returns its id, or null when nothing could start. */
-  const switchNow = useCallback((first = false): string | null => {
-    const list = candidates(first);
-    if (optionsRef.current.getGame().phase === 'running') optionsRef.current.finish();
-    return startFirst(list);
-  }, [candidates, startFirst]);
 
   // ---- Lobby -------------------------------------------------------------
 
@@ -179,34 +180,54 @@ export function useAutoPlay(options: AutoPlayOptions) {
     setLobby(openLobby(rotation(current, GAME_IDS), Date.now(), timed ? current.lobbySeconds : null));
   }, [setLobby]);
 
-  /** Starts the game with the most votes (skipping ones that can't start). */
+  /**
+   * Voting time is up (or "Chốt ngay"): first the pick is announced — most
+   * votes, or a random game when nobody voted or votes are tied — and on the
+   * next call (after `LOBBY_RESULT_MS`) that game starts.
+   */
   const resolveLobby = useCallback(() => {
     const current = lobbyRef.current;
     if (!current) return;
-    setLobby(null);
-    const ranking = lobbyRanking(current, Math.random);
-    const votes = Math.max(0, ...current.votes);
-    const id = startFirst(ranking);
-    if (id) {
-      optionsRef.current.onNotify(votes > 0 ? t('🎮 {title} được chọn!', { title: titleOf(id) }) : t('🎮 Chơi {title}!', { title: titleOf(id) }));
-    } else {
-      optionsRef.current.onAction(t('Không game nào trong danh sách bắt đầu được'));
+    const { onNotify, onAction } = optionsRef.current;
+    if (!current.result) {
+      const closed = closeLobby(current, Math.random, Date.now());
+      setLobby(closed);
+      if (closed.result) onNotify(lobbyResultText(closed.result, titleOf(closed.result.ranking[0] ?? null)));
+      return;
     }
+    setLobby(null);
+    if (!startFirst(current.result.ranking)) onAction(t('Không game nào trong danh sách bắt đầu được'));
   }, [setLobby, startFirst]);
+
+  /** Leaves the current game now: the game list (voting on) or the next game of the group. */
+  const goNext = useCallback((currentId: string | null) => {
+    const { onNotify, onAction } = optionsRef.current;
+    setLoop(null);
+    if (settingsRef.current.lobbyEnabled) {
+      // Timed: when nobody votes, a random game starts.
+      if (!lobbyRef.current) showLobby(true);
+      return;
+    }
+    const current = settingsRef.current;
+    const id = startFirst(nextGameOrder(rotation(current, GAME_IDS), currentId, current.order, Math.random));
+    if (id) onNotify(t('🔄 Đổi game: {title}', { title: titleOf(id) }));
+    else onAction(t('Không game nào trong danh sách bắt đầu được'));
+  }, [setLoop, showLobby, startFirst]);
 
   /**
    * Back to the game list (☰ in the game window): ends the running round
-   * (its result and points count) and shows the list, even with voting off.
+   * (its points count) and shows the list, even with voting off.
    */
   const openMenu = useCallback(() => {
     const { getGame: currentGame, finish, onAction } = optionsRef.current;
     const running = currentGame().phase === 'running';
     if (!running && lobbyRef.current) return;
     if (running) finish({ quiet: true });
+    setLoop(null);
     showLobby(false);
     manualLobby.current = true;
     onAction(t('Đã mở danh sách game: bấm một game trong cửa sổ game để chơi'));
-  }, [showLobby]);
+  }, [setLoop, showLobby]);
 
   /** The host picks game number `index` (0-based) in the list: it starts right away. */
   const pickLobby = useCallback((index: number) => {
@@ -224,26 +245,37 @@ export function useAutoPlay(options: AutoPlayOptions) {
 
   // A game started by anything (host, !start, the lobby) closes the list.
   useEffect(() => {
-    if (options.phase === 'running' && lobbyRef.current) setLobby(null);
+    if (options.phase === 'running') {
+      setHalted(false);
+      if (lobbyRef.current) setLobby(null);
+    }
   }, [options.phase, setLobby]);
+
+  // Huỷ / !cancel: the round is dropped and the game stops (no next round).
+  const seenCancels = useRef(options.cancels);
+  useEffect(() => {
+    if (options.cancels === seenCancels.current) return;
+    seenCancels.current = options.cancels;
+    setLoop(null);
+  }, [options.cancels, setLoop]);
 
   // Switching group (or editing it) refreshes an open list; numbers change, so votes restart.
   const groupKey = rotation(settings, GAME_IDS).join(',');
   useEffect(() => {
     const current = lobbyRef.current;
-    if (current && current.options.join(',') !== groupKey) showLobby(sessionRef.current != null);
+    if (current && !current.result && current.options.join(',') !== groupKey) showLobby(current.endsAt != null);
   }, [groupKey, showLobby]);
 
-  // Without autoplay the list shows whenever no game is on.
+  // With nothing being played, the list shows (its countdown starts with the first vote).
   useEffect(() => {
     if (!settings.lobbyEnabled) {
       if (lobbyRef.current && !manualLobby.current) setLobby(null);
       return;
     }
-    if (options.phase === 'idle' && !lobby && !session) showLobby(false);
-  }, [lobby, options.phase, session, setLobby, settings.lobbyEnabled, showLobby]);
+    if (options.phase === 'idle' && !lobby && !loop && !halted) showLobby(false);
+  }, [halted, lobby, loop, options.phase, setLobby, settings.lobbyEnabled, showLobby]);
 
-  // Voting countdown.
+  // Voting countdown, then the "picked game" announcement.
   const lobbyEndsAt = lobby?.endsAt ?? null;
   useEffect(() => {
     if (lobbyEndsAt == null) return undefined;
@@ -251,125 +283,126 @@ export function useAutoPlay(options: AutoPlayOptions) {
     return () => clearTimeout(timer);
   }, [lobbyEndsAt, resolveLobby]);
 
+  // ---- Switching ---------------------------------------------------------
+
   /**
-   * Leaves the current game: gift, !doigame and "Đổi game ngay" all end here.
-   * `immediate` skips showing the round result first.
+   * A switch asked by viewers (gift, !doigame) or the host's "switch after
+   * this round": the round plays to its end, its result is celebrated, then
+   * the list opens. A round without a timer (e.g. the wheel) ends now.
    */
-  const requestSwitch = useCallback((notice: string | null, immediate = false) => {
+  const requestSwitch = useCallback((notice: string | null) => {
+    const { getGame: currentGame, finish, onNotify } = optionsRef.current;
+    const game = currentGame();
+    const running = game.phase === 'running';
+    if (!loopRef.current && running && game.kind) setLoop(createLoop(game.kind, Date.now()));
+    const current = loopRef.current;
+    if (!current || current.switchPending) return;
+    patchLoop({ switchPending: true });
+    if (running && game.endsAt == null) finish();
+    if (notice) onNotify(running && game.endsAt != null ? `${notice} ${t('Hết ván này sẽ đổi game.')}` : notice);
+  }, [patchLoop, setLoop]);
+
+  /** "⏭ Đổi game ngay" (host): ends the round now (its points count) and moves on. */
+  const skipNow = useCallback(() => {
+    const { getGame: currentGame, finish } = optionsRef.current;
+    const game = currentGame();
+    const currentId = loopRef.current?.gameId ?? (game.phase === 'running' ? game.kind : null);
+    if (game.phase === 'running') finish({ quiet: true });
+    goNext(currentId);
+  }, [goNext]);
+
+  /** The host switches to another game from the app: the running round ends now (points count). */
+  const switchTo = useCallback((id: string) => {
     const { getGame: currentGame, finish, onNotify, onAction } = optionsRef.current;
-    const lobbyOn = settingsRef.current.lobbyEnabled;
-    const running = currentGame().phase === 'running';
-    const now = Date.now();
+    if (currentGame().phase === 'running') finish({ quiet: true });
+    setLobby(null);
+    if (startFirst([id])) onNotify(t('🎮 Chơi {title}!', { title: titleOf(id) }));
+    else onAction(t('Không bắt đầu được {title}', { title: titleOf(id) }));
+  }, [setLobby, startFirst]);
 
-    if (sessionRef.current && !immediate) {
-      // Show the result; the loop moves on after the round gap.
-      if (running) finish();
-      // Mark the game as done in both modes (time is up, all rounds played).
-      patchSession({ slotEndsAt: now, roundsPlayed: Number.MAX_SAFE_INTEGER, idleSince: running ? now : sessionRef.current.idleSince ?? now });
-      if (notice) onNotify(notice);
-      return;
-    }
-    if (lobbyOn) {
-      if (running) finish();
-      // Without autoplay the list opens by itself once the result has been shown.
-      if ((immediate || !running) && !lobbyRef.current) showLobby(sessionRef.current != null);
-      if (notice) onNotify(notice);
-      return;
-    }
-    const id = switchNow();
-    if (id) {
-      if (notice) onNotify(`${notice} → ${titleOf(id)}`);
-    } else {
-      onAction(t('Không game nào trong danh sách bắt đầu được'));
-    }
-  }, [patchSession, showLobby, switchNow]);
-
-  // ---- Autoplay loop -----------------------------------------------------
+  // ---- Play loop + auto session -----------------------------------------
 
   const begin = useCallback(() => {
     if (sessionRef.current) return;
-    const now = Date.now();
-    const game = optionsRef.current.getGame();
-    const running = game.phase === 'running' ? game.kind : null;
-    const fresh = createSession(settingsRef.current, now);
-    // Keep a round that's already on; it gets a full slot.
-    setSession(running ? { ...fresh, gameId: running, slotEndsAt: now + settingsRef.current.switchMinutes * 60_000 } : fresh);
+    setSession(createSession(settingsRef.current, Date.now()));
     setGift(EMPTY_GIFT_SWITCH);
-    const { liveMinutes, switchMinutes } = settingsRef.current;
-    optionsRef.current.onAction(liveMinutes
-      ? t('Tự động: mỗi game {switchMinutes} phút, LIVE {liveMinutes} phút', { switchMinutes, liveMinutes })
-      : t('Tự động: mỗi game {switchMinutes} phút', { switchMinutes }));
+    setHalted(false);
+    const { liveMinutes } = settingsRef.current;
+    optionsRef.current.onAction(liveMinutes ? t('Tự động: LIVE {liveMinutes} phút', { liveMinutes }) : t('Tự động: bật'));
   }, [setGift, setSession]);
 
-  // Main loop: LIVE timer, game switching and restarting rounds.
-  const active = session != null;
+  // Main loop: next round of the same game, switching, and the LIVE timer.
+  const active = session != null || loop != null;
   useEffect(() => {
     if (!active) return undefined;
     const timer = setInterval(() => {
-      const current = sessionRef.current;
-      if (!current) return;
-      const { getGame: currentGame, finish, onNotify } = optionsRef.current;
+      const { getGame: currentGame, finish, onNotify, start, selectedId } = optionsRef.current;
       const game = currentGame();
       const now = Date.now();
       const running = game.phase === 'running';
-      const openList = lobbyRef.current;
+      const auto = sessionRef.current;
 
-      // Follow the host: a manually started game becomes the current one.
-      if (running && game.kind && game.kind !== current.gameId) {
-        patchSession({ gameId: game.kind, idleSince: null, roundsPlayed: 0 });
-        return;
-      }
-      if (running && current.idleSince != null) patchSession({ idleSince: null });
-      if (!running && current.idleSince == null && current.gameId != null) {
-        // A round of the current game just ended.
-        patchSession({ idleSince: now, roundsPlayed: current.roundsPlayed + 1 });
-        return;
-      }
-
-      const step = autoPlayStep(current, settingsRef.current, running, now);
-      if (step === 'end') {
-        if (running) finish();
-        setLobby(null);
-        onNotify(t('⏰ Hết giờ LIVE — cảm ơn mọi người đã chơi!'));
-        stop(t('Hết giờ LIVE: đã tắt tự động chuyển game'));
-        return;
-      }
-      if (step === 'warn') {
-        patchSession({ warned: true });
-        onNotify(t('⏰ Còn 5 phút nữa là hết LIVE!'));
-        return;
-      }
-      if (openList && !running) {
-        // Viewers are choosing; autoplay just makes sure the vote ends.
-        if (openList.endsAt == null) {
-          setLobby({ ...openList, endsAt: now + settingsRef.current.lobbySeconds * 1000, timerStartedAt: now });
+      if (auto) {
+        const step = sessionStep(auto, now);
+        if (step === 'end') {
+          if (running) finish();
+          setLoop(null);
+          setLobby(null);
+          setHalted(true);
+          onNotify(t('⏰ Hết giờ LIVE — cảm ơn mọi người đã chơi!'));
+          stop(t('Hết giờ LIVE: đã tắt tự động'));
+          return;
         }
+        if (step === 'warn') {
+          setSession({ ...auto, warned: true });
+          onNotify(t('⏰ Còn 5 phút nữa là hết LIVE!'));
+        }
+      }
+
+      const current = loopRef.current;
+      // Follow the host: a game started any other way becomes the one being played.
+      if (running && game.kind && game.kind !== current?.gameId) {
+        setLoop(createLoop(game.kind, now));
         return;
       }
-      if (step === 'finish') {
-        // Slot is over: show this round's result, the next game starts after the gap.
-        finish();
-        patchSession({ idleSince: now });
-      } else if (step === 'switch') {
+      if (!current) {
+        const list = lobbyRef.current;
+        if (!auto || running) return;
+        if (list) {
+          // Viewers are choosing; the auto session makes sure the vote ends.
+          if (list.endsAt == null) setLobby(startLobbyTimer(list, now, settingsRef.current.lobbySeconds));
+          return;
+        }
+        // Auto session with nothing on: the list, or the selected game first.
         if (settingsRef.current.lobbyEnabled) {
           showLobby(true);
           return;
         }
-        const first = current.gameId == null;
-        const id = switchNow(first);
-        if (id) {
-          if (!first) onNotify(t('🔄 Đổi game: {title}', { title: titleOf(id) }));
-        } else {
-          stop(t('Không game nào trong danh sách bắt đầu được: đã tắt tự động'));
-        }
-      } else if (step === 'restart' && current.gameId) {
-        if (!optionsRef.current.start(current.gameId) && !switchNow()) {
-          stop(t('Không game nào trong danh sách bắt đầu được: đã tắt tự động'));
-        }
+        const group = rotation(settingsRef.current, GAME_IDS);
+        const first = group.includes(selectedId) ? [selectedId, ...group.filter((id) => id !== selectedId)] : group;
+        if (!startFirst(first)) stop(t('Không game nào trong danh sách bắt đầu được: đã tắt tự động'));
+        return;
+      }
+
+      if (running) {
+        if (current.idleSince != null) patchLoop({ idleSince: null });
+        return;
+      }
+      if (current.idleSince == null) {
+        // A round just ended: its result stays on screen for the round gap.
+        patchLoop({ idleSince: now, roundsPlayed: current.roundsPlayed + 1 });
+        return;
+      }
+      const step = loopStep(current, settingsRef.current, false, now);
+      if (step === 'switch') {
+        goNext(current.gameId);
+      } else if (step === 'restart') {
+        if (start(current.gameId)) patchLoop({ idleSince: null });
+        else goNext(current.gameId);
       }
     }, TICK_MS);
     return () => clearInterval(timer);
-  }, [active, patchSession, setLobby, showLobby, stop, switchNow]);
+  }, [active, goNext, patchLoop, setLobby, setLoop, setSession, showLobby, startFirst, stop]);
 
   // Optionally start with the LIVE.
   const wasConnected = useRef(options.liveConnected);
@@ -384,7 +417,8 @@ export function useAutoPlay(options: AutoPlayOptions) {
   const handleSwitchCommand = useCallback((user: string, nickname: string, simulated: boolean): boolean => {
     const { getGame: currentGame, acceptCommand, isHost, onNotify } = optionsRef.current;
     const game = currentGame();
-    if (game.phase !== 'running') return true;
+    const current = loopRef.current;
+    if ((game.phase !== 'running' && !current) || current?.switchPending) return true;
     if (isHost(user, simulated)) {
       requestSwitch(t('🔄 {nickname} đổi game!', { nickname }));
       return true;
@@ -392,9 +426,11 @@ export function useAutoPlay(options: AutoPlayOptions) {
     const needed = settingsRef.current.switchCommandVotes;
     if (needed <= 0 || !acceptCommand(user)) return true;
 
+    // Votes count for the game being played (all of its rounds).
     const votes = switchVotes.current;
-    if (votes.round !== game.startedAt) {
-      votes.round = game.startedAt;
+    const since = current?.since ?? game.startedAt;
+    if (votes.since !== since) {
+      votes.since = since;
       votes.users = new Set();
     }
     votes.users.add(user);
@@ -424,7 +460,7 @@ export function useAutoPlay(options: AutoPlayOptions) {
       if (!choosing || !openList) return { consumed: false };
       const index = parseLobbyVote(text, openList.options.length);
       if (index == null) return { consumed: false };
-      if (optionsRef.current.acceptCommand(event.user)) {
+      if (!openList.result && optionsRef.current.acceptCommand(event.user)) {
         setLobby(voteLobby(openList, event.user, index, 1, now, current.lobbySeconds));
       }
       return { consumed: true };
@@ -438,6 +474,9 @@ export function useAutoPlay(options: AutoPlayOptions) {
       return { consumed: false };
     }
     if (!giftMatches(current, String(event.giftName || ''))) return { consumed: false };
+    // Nothing to switch, or a switch is already on its way: the gift doesn't count.
+    const playing = loopRef.current != null || optionsRef.current.getGame().phase === 'running';
+    if (!playing || loopRef.current?.switchPending) return { consumed: false };
     const result = addGifts(giftRef.current, current, Number(event.count) || 1, now);
     setGift(result.state);
     if (result.switch) requestSwitch(t('🎁 {nickname} tặng {gift}: đổi game!', { nickname: who, gift: current.giftName }));
@@ -456,13 +495,19 @@ export function useAutoPlay(options: AutoPlayOptions) {
     settings,
     setSettings,
     session,
+    loop,
+    /** A switch is waiting for the current round to end. */
+    switchPending: loop?.switchPending === true,
     gift,
     lobby,
     lobbyView,
     begin,
     extend,
     stop: () => stop(),
-    skip: () => requestSwitch(null, true),
+    skip: skipNow,
+    /** Host: switch game when the current round ends. */
+    switchLater: () => requestSwitch(t('🔄 Streamer đổi game!')),
+    switchTo,
     resolveLobby,
     openMenu,
     pickLobby,

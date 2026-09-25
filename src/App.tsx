@@ -22,6 +22,7 @@ import { useAutoPlay } from './game/useAutoPlay';
 import { useLiveGames } from './game/useLiveGames';
 import { useDemoBot } from './hooks/useDemoBot';
 import { useAi } from './hooks/useAi';
+import { overlayAvatarNames, useAvatars } from './hooks/useAvatars';
 import { useGameSounds } from './hooks/useGameSounds';
 import { useLanguage } from './hooks/useLanguage';
 import { useNow } from './hooks/useNow';
@@ -177,6 +178,7 @@ export default function App() {
 
   const language = useLanguage();
   const ai = useAi();
+  const { remember: rememberAvatar, avatarsFor } = useAvatars();
 
   function changeLanguage(next: Language): void {
     setLanguage(next);
@@ -274,6 +276,7 @@ export default function App() {
   const autoPlay = useAutoPlay({
     getGame: games.getState,
     phase: games.game.phase,
+    cancels: games.game.cancels,
     selectedId: games.selectedId,
     start: games.start,
     finish: games.finish,
@@ -328,6 +331,8 @@ export default function App() {
   const now = useNow(games.game.phase === 'running', 500);
 
   const processLiveEvent = useCallback((event: LiveEvent) => {
+    // First, so the follow/join bubble below already has the viewer's picture.
+    rememberAvatar(event);
     handleWelcomeEvent(event);
 
     // The running game sees the event first; comments it consumes skip the music rules.
@@ -390,48 +395,57 @@ export default function App() {
         setGiftProgress(next);
       }
     }
-  }, [acceptCommand, handleAutoPlayEvent, handleGameEvent, handleWelcomeEvent, nextTrack, playlist, rules, selectTrack]);
+  }, [acceptCommand, handleAutoPlayEvent, handleGameEvent, handleWelcomeEvent, nextTrack, playlist, rememberAvatar, rules, selectTrack]);
 
   const { game, gameView } = games;
   const { giftSwitchEnabled, giftName: switchGiftName, giftCount: switchGiftCount } = autoPlay.settings;
   const switchCommandVotes = autoPlay.settings.switchCommandVotes;
+  const { switchPending } = autoPlay;
   const howTo = useMemo(() => [
+    // A switch waits for the round to end: tell viewers it's coming.
+    ...(switchPending ? [{ icon: '🔄', text: t('Hết ván này sẽ đổi game') }] : []),
     // Game how-to chips are static definition texts: translated here, when they are shown.
     ...games.overlayMeta.howTo.map((chip) => ({ ...chip, text: t(chip.text) })),
     ...(giftSwitchEnabled && switchGiftName.trim()
       ? [{ icon: '🎁', text: t('Tặng {gift} · đổi game', { gift: `${switchGiftCount > 1 ? `${switchGiftCount} ` : ''}${switchGiftName.trim()}` }) }]
       : []),
     ...(switchCommandVotes > 0 ? [{ icon: '🔄', text: t('!doigame · {count} người gõ là đổi game', { count: switchCommandVotes }) }] : [])
-  ], [games.overlayMeta.howTo, giftSwitchEnabled, language, switchCommandVotes, switchGiftCount, switchGiftName]);
+  ], [games.overlayMeta.howTo, giftSwitchEnabled, language, switchCommandVotes, switchGiftCount, switchGiftName, switchPending]);
   const { lobbyView } = autoPlay;
   const runHint = (() => {
     const s = autoPlay.settings;
-    const per = s.switchBy === 'rounds' ? t('mỗi game {count} lượt', { count: s.roundsPerGame }) : t('mỗi game {count} phút', { count: s.switchMinutes });
+    const per = s.switchBy === 'rounds' ? t('đổi game sau {count} ván', { count: s.roundsPerGame })
+      : s.switchBy === 'time' ? t('đổi game sau {count} phút', { count: s.switchMinutes })
+        : t('mỗi game chơi mãi đến khi có lệnh đổi game');
     const how = s.lobbyEnabled ? t('viewer bầu chọn game tiếp theo, {per}', { per }) : `${t(s.order === 'random' ? 'ngẫu nhiên' : 'lần lượt')}, ${per}`;
     const panel = t('🎮 Chọn & chuyển game');
     return s.liveMinutes
       ? t('{how}, dừng sau {minutes} phút (chỉnh ở panel {panel})', { how, minutes: s.liveMinutes, panel })
       : t('{how} (chỉnh ở panel {panel})', { how, panel });
   })();
-  const overlayState = useMemo<Omit<OverlayState, 'updatedAt'>>(() => ({
-    // The game list covers the idle/finished screen until the next game starts.
-    game: lobbyView && game.phase !== 'running' ? lobbyView : {
-      ...gameView,
-      // The definition title (static, Vietnamese): translated for the overlay here.
-      title: t(game.title),
-      phase: game.phase,
-      endsAt: game.endsAt,
-      timerStartedAt: game.timerStartedAt,
-      message: game.message,
-      accent: games.overlayMeta.accent,
-      howTo
-    },
-    effects: game.effects,
-    leaderboard: topScores(game, 5),
-    nowPlaying: currentTrack ? trackTitle(currentTrack.name) : null,
-    alert: welcome.alert,
-    lang: language
-  }), [currentTrack, game, gameView, games.overlayMeta.accent, howTo, language, lobbyView, welcome.alert]);
+  const overlayState = useMemo<Omit<OverlayState, 'updatedAt'>>(() => {
+    const state = {
+      // The game list covers the idle/finished screen until the next game starts.
+      game: lobbyView && game.phase !== 'running' ? lobbyView : {
+        ...gameView,
+        // The definition title (static, Vietnamese): translated for the overlay here.
+        title: t(game.title),
+        phase: game.phase,
+        endsAt: game.endsAt,
+        timerStartedAt: game.timerStartedAt,
+        message: game.message,
+        accent: games.overlayMeta.accent,
+        howTo
+      },
+      effects: game.effects,
+      leaderboard: topScores(game, 5),
+      nowPlaying: currentTrack ? trackTitle(currentTrack.name) : null,
+      alerts: welcome.alerts,
+      lang: language
+    };
+    // Profile pictures of the viewers on screen (the overlay falls back to an initial).
+    return { ...state, avatars: avatarsFor(overlayAvatarNames(state)) };
+  }, [avatarsFor, currentTrack, game, gameView, games.overlayMeta.accent, howTo, language, lobbyView, welcome.alerts]);
 
   useEffect(() => {
     window.desktop?.updateOverlay({ ...overlayState, updatedAt: Date.now() });
@@ -731,10 +745,12 @@ export default function App() {
               settings={autoPlay.settings}
               onChange={autoPlay.setSettings}
               session={autoPlay.session}
+              loop={autoPlay.loop}
               gift={autoPlay.gift}
               onBegin={autoPlay.begin}
               onStop={autoPlay.stop}
               onSkip={autoPlay.skip}
+              onSwitchLater={autoPlay.switchLater}
               onExtend={autoPlay.extend}
               lobby={autoPlay.lobby}
               onResolveLobby={autoPlay.resolveLobby}
@@ -753,6 +769,7 @@ export default function App() {
               remainingMs={remainingMs(game, now)}
               leaderboard={overlayState.leaderboard}
               onStart={() => { games.start(); }}
+              onSwitchTo={autoPlay.switchTo}
               onFinish={games.finish}
               onCancel={games.cancel}
               onResetScores={games.resetScores}

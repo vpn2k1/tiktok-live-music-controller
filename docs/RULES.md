@@ -43,7 +43,7 @@ Each game is a pure plugin in `src/game/games/` (see `src/game/types.ts`), liste
 | Đoán số | chat digits | secret 1..max; overlay narrows the range (cao hơn/thấp hơn); out-of-range guesses ignored | `points` to the winner |
 | Ai nhanh tay | chat | first exact match (case/space-insensitive, tone-sensitive) of the shown word wins | `points` to the winner |
 | Team battle | chat `A`/`B`, like, gift | join once (no switching); members' likes +1, gifts +`giftPoints`; loser penalty text | +1 contributor, +2 winning team |
-| Đua vịt | like, gift | first like joins; like = 1 step, gift = `giftBoost`; first to the line wins, else furthest | top 3: +5/+3/+2, others +1 |
+| Đua vịt | `a`–`d` answers | question race: a question every `seconds` (built-in bank or own A–D lines); when it closes, every correct answer moves +1 step in answer order (the first correct answer moves first, so it wins a tie at the line); first to `goal` steps (default 7) wins and gets the winner spotlight; after `maxQuestions` the leader wins | +10 per step; top 3: +100/+50/+25 |
 | Vòng quay thử thách | gift (any or named) | each gift unit queues a spin (max 20); wheel lands on a random challenge for the streamer; no timer | +1 per spin |
 
 ## Newer fun games
@@ -64,6 +64,17 @@ All of them are pure modules in `src/game/games/`; Vietnamese content lives in `
 | ❤️ Thử thách tim (`thuThachTim`) | likes, gifts (= `giftLikes` likes each) | the room fills a heart meter; each milestone (`số tim \| thử thách`) unlocks a streamer challenge; the last milestone ends the round | every liker: likes ÷ `likesPerPoint` (top 20) |
 
 The "Vote bài tiếp theo" game was removed (music stays controllable by the music rules).
+
+## Versus games (đối kháng)
+
+Team games share `src/game/teamRoster.ts`: a side is picked once and can't be switched (`!do` / `!đỏ` / `!red` → Red, `!xanh` / `!blue` → Blue, `!join` → the smaller side; bare "đỏ" / "xanh" also work). A viewer who plays without picking joins the smaller side. Members live in a mutable roster written in `commit` (no per-join copies in big rooms). Shots and team commands need the "!" so everyday chat ("đó", "bạn") never triggers them.
+
+| Game | Viewers type | Rules | Points |
+|---|---|---|---|
+| 🏰 Thành trì Đỏ – Xanh (`thanhTri`) | `!do`/`!xanh`, `!ban`, `!sua`, likes, gifts | two castles with `hp` each; `!ban` −`shotDamage`, each like −`likeDamage`, each gift −`giftDamage` to the enemy castle; `!sua` +`repair` to your own (up to max). A castle at 0 ends the round; otherwise the side with more HP wins at the end | every contributor +2, winning side +5, winning MVP (most damage/repair) +10 |
+| 🆚 Quiz Đỏ – Xanh (`quizDoi`) | `!do`/`!xanh`, `a`–`d` | *series* on the quiz banks (presets / own file like Quiz); each viewer's speed points also go to their side (tug-of-war bar); the side with more points wins | speed points per question + `teamBonus` for every scoring member of the winning side |
+| 🤠 Đấu súng miền Tây (`dauSung`) | `!join`, `!ban` | viewers queue (max 50); two duel at a time: after a random `minWait`–`maxWait` s the overlay shows "BẮN!"; the first of the two to type `!ban` wins, shooting before the signal loses, nobody within 4 s = both out. The winner stays on; judged on the signal time (not the 4×/s phase switch) | win `winPoints` + 5 per win in a row; fastest reaction of the round +15 |
+| 👑 Vua của đồi (`vuaDoi`) | `!cuop`, gifts | one crown: `!cuop` takes it unless the king is shielded (`grace` s after each take); the king's gift adds `giftShield` s of shield, a challenger's gift takes the crown through the shield | `pointsPerSecond` × seconds held; longest reign +20 |
 
 ## Japanese 🇯🇵 and Chinese 🇨🇳 games
 
@@ -144,7 +155,7 @@ Streamer/mod = the connected TikTok account, a username in the moderator list, o
 
 Only accepted answers count as commands for the cooldown: wrong answers and ordinary chat during a round are ignored, so they never block a viewer's next real answer.
 
-Game commands (only while that game runs): `!vote 2`, `!hit` (boss, `chatDamage`), `!guess 42` (guess number / hangman), `!join`, `!join a|b`, `!a`, `!b` (team battle; bare `!join` picks the smaller team), `!join`, `!run` (race, `chatStep`), `!spin` (wheel, streamer/mod only), `!ans …` (English answer games / Name It). Plain forms (`2`, `A`, `apple`) keep working.
+Game commands (only while that game runs): `!vote 2`, `!hit` (boss, `chatDamage`), `!guess 42` (guess number / hangman), `!join`, `!join a|b`, `!a`, `!b` (team battle; bare `!join` picks the smaller team), `!spin` (wheel, streamer/mod only), `!ans …` (English answer games / Name It). Plain forms (`2`, `A`, `apple`) keep working.
 
 ## Background features (Tính năng nền)
 
@@ -153,29 +164,44 @@ Game commands (only while that game runs): `!vote 2`, `!hit` (boss, `chatDamage`
 
 ## Tự động chuyển game (auto host)
 
-Panel "🎮 Chọn & chuyển game" in the Game tab (`src/game/autoplay.ts` pure logic, `src/game/useAutoPlay.ts` timers). Settings persist in `localStorage` (`autoplay-settings`).
+Panel "🎮 Chọn & chuyển game" in the Game tab (`src/game/autoplay.ts` pure logic, `src/game/useAutoPlay.ts` timers). Settings persist in `localStorage` (`autoplay-settings`, `version` 2).
 
-- **Thời lượng LIVE** (`liveMinutes`, 0–720, 0 = no limit): counted from "▶ Bật tự động" (or from connecting, if "Tự bật khi kết nối TikTok" is on). 5 minutes before the end the overlay announces it; at the end the running round is finished and autoplay stops. The app never ends the TikTok LIVE itself. While running, the typed value applies from the next start; use "+15 phút LIVE" to extend.
-- **Mỗi game** (`switchMinutes`, 1–180): when a game's time is up its round is finished (points awarded, result shown), and after the round gap the next game starts: voted in the game list when "Viewer chọn game" is on, otherwise the next one in the rotation.
-- **Nghỉ giữa vòng** (`roundGapSeconds`, 3–300): inside a game's time, a finished round is replayed after this pause.
-- **Thứ tự**: sequential (library order) or random, within the active game group (below). A game that can't start (e.g. vote without music) is skipped; if none can start, autoplay stops.
-- A game the host starts manually becomes the current game; Chốt/Huỷ just leads to the next round after the gap.
+### Endless play (play loop)
+
+- A started game (voted in the list, started by the host, `!start`, autoplay) **plays round after round without end**: each finished round shows its result and the big congratulations screen (see below), and after **Nghỉ giữa ván** (`roundGapSeconds`, 3–300, default 8) the same game starts a new round (`loopStep` → `restart`). The last round's state is passed to `start` as `previous`, so question games continue without repeats.
+- It stops only when the game is switched or cancelled:
+  - **Switch requests** — gift (below), `!doigame`, the host's "🔄 Đổi khi hết ván": the switch is marked (`PlayLoop.switchPending`) and **the current round plays to its end**; its winners are celebrated during the round gap, then the game list opens (or the next game of the group when the list is off). The overlay shows a "🔄 Hết ván này sẽ đổi game" chip meanwhile. A round without a timer (the wheel) ends at once.
+  - **Host, immediately** — "⏭ Đổi game ngay", "⏭ Đổi sang <game>" (pick another game in ② while one runs), ☰ in the game window: the round ends now (its points count) and the next game / the list comes at once.
+  - **Huỷ / `!cancel`**: the round is dropped and the game stops (no next round); the list shows again (its countdown waits for the first vote).
+  - **Chốt / `!stop`** only ends the current round early; the game continues with a new round after the gap.
+- **Đổi game khi** `switchBy`: **Chỉ khi có lệnh đổi game (chơi mãi)** (`command`, default — endless), **Chơi xong số ván** (`rounds`, `roundsPerGame` 1–50) or **Chơi đủ số phút** (`time`, `switchMinutes` 1–180). All of them switch only at the end of a round. Settings saved before version 2 get `command`.
+- **Thứ tự**: sequential (library order) or random, within the active game group (below), when the list is off. A game that can't start (e.g. vote without music) is skipped.
+
+### Auto session (LIVE length)
+
+- "▶ Bật tự động" (or "Tự bật khi kết nối TikTok"): with nothing on, opens the game list with the countdown running (or starts the selected game when the list is off); the play loop does the rest.
+- **Thời lượng LIVE** (`liveMinutes`, 0–720, 0 = no limit): 5 minutes before the end the overlay announces it; at the end the running round is finished, the game stops and the list stays closed until the host plays again. The app never ends the TikTok LIVE itself. While running, the typed value applies from the next start; use "+15 phút LIVE" to extend.
 
 ### Gift → switch game
 
-- Exact gift name (case-insensitive, default `Rose`) summed across viewers until `giftCount` (default 5), then the game switches (to the game list when it's on, else the next rotation game). Works with or without autoplay; the round result is shown first (round gap with autoplay, 10 s without it when the list is on).
+- Exact gift name (case-insensitive, default `Rose`) summed across viewers until `giftCount` (default 5), then a switch is requested: the round finishes normally, the winners are celebrated, then the game list opens (or the next rotation game). Works with or without the auto session. Gifts after the request are not counted.
 - After a switch, matching gifts are ignored for `giftCooldownSeconds` (default 30) so the new game gets played.
 - The running game still sees the gift first (e.g. boss damage, fan points). The overlay shows a "🎁 Tặng N <gift> · đổi game" chip while it's on. The reward is only a game change, never a prize.
 
+### End-of-round celebration
+
+`FinishResult.effects` may carry a `win` effect with `podium` (`podiumEffect` / `podiumOf` / `winnerEffect` / `roundEndEffect` in `src/game/series.ts`). The overlay (`Celebration` in `src/overlay/effects.tsx`) shows it for 6.5 s with confetti:
+- **Top 3 podium** (2nd · 1st · 3rd, avatar + name + score): every ranking game — quiz / English quiz / answer games / hangman / estimate / majority / rock-paper-scissors (round totals), golden bell (survivors), crossword, team quiz and castle siege (best players of the winning team), duel (wins), king of the hill (seconds held), memory (pairs), like challenge (likes), boss (damage). Games without their own effect get a podium of their round awards.
+- **Winner spotlight** (one big avatar with a crown, name, value): the race winner.
+- Avatar names are added to `OverlayState.avatars` (`overlayAvatarNames`), so real TikTok profile pictures show when known.
+
 ### Run one or several games
 
-In "② Chọn game": tick games with ✓ / ＋ on the cards (the active group), then **▶ Chạy N game đã chọn** (starts autoplay; **⏹ Dừng chạy tự động** stops it). One ticked game = that game repeats. How they run comes from the "🎮 Chọn & chuyển game" panel:
-- **Đổi game khi** `switchBy`: **Chơi xong số lượt** (default; `roundsPerGame` 1–50, a round = one question set or one match, never cut short) or **Hết thời gian mỗi game** (`switchMinutes`, the running round is finished when time is up).
-- With "Viewer chọn game" on, viewers vote the next game among the ticked ones; otherwise the next one follows the order (sequential/random). Gift switch and `!doigame` end the current game in both modes.
+In "② Chọn game": tick games with ✓ / ＋ on the cards (the active group), then **▶ Chạy N game đã chọn** (starts the auto session; **⏹ Dừng chạy tự động** stops it). With "Viewer chọn game" on, viewers vote the next game among the ticked ones; otherwise the next one follows the order (sequential/random).
 
 ### Bank files (điền chữ, chọn đáp án…)
 
-Every bank field (Quiz, English Quiz, Unscramble, Dịch nhanh, Emoji, Sentence Builder, Hangman, Name It, Ai nhanh tay) has:
+Every bank field (Quiz, English Quiz, Đua vịt, Unscramble, Dịch nhanh, Emoji, Sentence Builder, Hangman, Name It, Ai nhanh tay) has:
 - **⬇ File mẫu**: saves a sample `.txt` (UTF-8 with BOM, opens in Excel) through a save dialog; `#` lines explain the columns.
 - **📂 Nhập file**: `.txt` with `|` columns, `.csv` (comma or semicolon; quoted cells ok; a `|` inside a cell becomes `/`), or tab-separated rows pasted from a spreadsheet. `#` comments and blank lines are dropped (`src/game/bankFile.ts`). Import replaces the bank (up to the field limit).
 - A live check under the field: "✅ N dòng dùng được · ⚠ M dòng sai mẫu, sẽ bỏ qua: dòng …" (`GameDefinition.checkBank`).
@@ -195,17 +221,18 @@ Set up in "② Chọn game" before going LIVE: `groups` + `activeGroupId` in `au
 
 `src/game/lobby.ts` (pure) + `useAutoPlay`. On by default (`lobbyEnabled`).
 
-- Whenever no game is running (app start, a round ended and hid, a switch), the overlay game card — including the standalone game window — shows **🎮 Chọn game · <group name>**: every game of the active group, numbered 1..n in library order (same numbers all stream). Keep groups to ~10 games so the list fits the overlay.
+- Whenever no game is being played (app start, after a switch or a cancel), the overlay game card — including the standalone game window — shows **🎮 Chọn game · <group name>**: every game of the active group, numbered 1..n in library order (same numbers all stream). Keep groups to ~10 games so the list fits the overlay.
 - Votes: comment `2`, `#2`, `!game 2` or `!chon 2` (whitelist, in range only). Every accepted comment is 1 vote; the per-viewer cooldown applies, so more comments = more votes but no flooding. While the list is shown these comments are consumed (music "Comment số → chọn bài" doesn't fire).
 - Gifts (any gift) add `lobbyGiftVotes` (default 5) votes per gift unit to the gifter's last chosen game, or the leading game if they haven't voted. 0 = gifts don't vote. While the list is shown the "gift → switch game" gift only votes.
-- Countdown `lobbySeconds` (5–300, default 20) starts with the first vote; with autoplay on it starts right away and, with no votes, a random listed game is played. The game with the most votes starts (ties random; games that can't start are skipped).
-- App control: "✅ Chốt ngay" (start the leader now). Starting any game manually (▶ Bắt đầu, `!start`) closes the list.
+- Countdown `lobbySeconds` (5–300, default 20): after a game switch (and with the auto session) it starts right away; the very first list (nothing played yet) waits for the first vote.
+- When it ends (`closeLobby`): the game with the most votes is picked; **nobody voted** or **a tie** → a random game (among the tied ones for a tie). The pick is announced for 4 s (`LOBBY_RESULT_MS`) on the list — headline "🎲 Không ai chọn — bốc ngẫu nhiên: X!" / "🎲 Hoà phiếu (N game) — bốc ngẫu nhiên: X!" / "✅ Nhiều phiếu nhất: X!", the picked tile pulses, the others dim — and as an overlay notice; then it starts. Votes are closed during the announcement. Games that can't start are skipped.
+- App control: "✅ Chốt ngay" (close the vote now), then "▶ Chơi ngay" (skip the announcement). Starting any game manually (▶ Bắt đầu, `!start`) closes the list.
 
 ### `!doigame` (switch game by command)
 
 - Also `!đổi game`, `!skipgame`, `!doi` (fixed whitelist). Only while a game is running.
-- Viewers: counts distinct viewers during the current round (cooldown applies); at `switchCommandVotes` (default 5) the round is finished and the next game is chosen (game list or rotation). Each vote is announced on the overlay (`2/5`). 0 = viewers can't switch.
-- Streamer / moderators / app test tools: switch at once.
+- Viewers: counts distinct viewers while the current game is played (all its rounds; cooldown applies); at `switchCommandVotes` (default 5) a switch is requested: the current round plays to its end, then the next game is chosen (game list or rotation). Each vote is announced on the overlay (`2/5`). 0 = viewers can't switch.
+- Streamer / moderators / app test tools: one `!doigame` requests the switch (still at the end of the round; the app's "⏭ Đổi game ngay" switches at once).
 - The overlay shows a "🔄 !doigame · N người gõ là đổi game" chip during games.
 
 ## Rule security

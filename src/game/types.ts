@@ -12,10 +12,11 @@ export type GameInput =
   | { kind: 'like'; user: string; nickname: string; count: number }
   | { kind: 'gift'; user: string; nickname: string; giftName: string; count: number };
 
-export type GameCategory = 'fun' | 'english' | 'japanese' | 'chinese';
+export type GameCategory = 'fun' | 'versus' | 'english' | 'japanese' | 'chinese';
 
 export const GAME_CATEGORY_LABELS: Record<GameCategory, string> = {
   fun: 'Giải trí',
+  versus: 'Đối kháng ⚔️',
   english: 'Tiếng Anh 🇬🇧',
   japanese: 'Tiếng Nhật 🇯🇵',
   chinese: 'Tiếng Trung 🇨🇳'

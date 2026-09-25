@@ -1,4 +1,5 @@
 import { t } from '../../shared/i18n';
+import { podiumOf } from '../series';
 import type { PointAward } from '../engine';
 import { chatTest, commandArgument, giftTest, likeTest, percentOf, ranked, view, type GameDefinition } from '../types';
 
@@ -111,9 +112,9 @@ export const bossGame: GameDefinition<BossRound, BossConfig> = {
       state,
       message,
       awards: bossAwards(state),
-      effects: [bossDefeated(state)
-        ? { kind: 'win', text: t('Boss đã bị hạ!'), user: state.lastHit?.nickname }
-        : { kind: 'lose', text: t('Boss thắng 😈') }]
+      effects: [bossDefeated(state) && topAttackers(state).length
+        ? podiumOf(topAttackers(state).map((entry) => ({ nickname: entry.nickname, value: t('⚔️ {damage} sát thương', { damage: entry.damage }) })), t('Boss đã bị hạ!'))
+        : bossDefeated(state) ? { kind: 'win', text: t('Boss đã bị hạ!'), user: state.lastHit?.nickname } : { kind: 'lose', text: t('Boss thắng 😈') }]
     };
   },
 

@@ -9,6 +9,7 @@ import {
   progressLabel,
   rankingRows,
   resultHint,
+  roundEndEffect,
   scoreQuestion,
   seconds,
   SERIES_SETTINGS,
@@ -243,12 +244,11 @@ export function createAnswerGame(options: AnswerGameOptions): GameDefinition<Ans
       const scored = state.stage === 'ask' ? scoreQuestion(state, config) : null;
       scored?.commit();
       const done: AnswerRound = { ...state, stage: 'done', last: scored?.result ?? state.last };
-      const top = state.totals.top(1)[0];
       return {
         state: done,
         awards: scored?.awards ?? [],
         message: `${state.stage === 'ask' ? `${t('Đáp án: {answer}.', { answer: current(state).display })} ` : ''}${finalMessage(done)}`,
-        effects: [top ? { kind: 'win', text: `🏆 ${top.nickname}`, user: top.nickname } : { kind: 'lose', text: t('Hết lượt') }]
+        effects: [roundEndEffect(done)]
       };
     },
 

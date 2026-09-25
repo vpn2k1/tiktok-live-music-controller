@@ -30,7 +30,7 @@ function winnerOf(state: TeamRound): 0 | 1 | null {
 export const teamBattleGame: GameDefinition<TeamRound, TeamConfig> = {
   id: 'teamBattle',
   title: 'Team battle ⚔️',
-  category: 'fun',
+  category: 'versus',
   accent: '#a855f7',
   howTo: 'Comment A hoặc B để vào đội (không đổi được). Tim và gift của thành viên cộng điểm cho đội. Đội thua chịu phạt.',
   commands: [

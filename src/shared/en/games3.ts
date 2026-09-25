@@ -95,21 +95,25 @@ export const EN_GAMES3: Record<string, string> = {
 
   // Duck race (race.ts)
   'Đua vịt 🏁': 'Duck race 🏁',
-  'Thả tim để có nhân vật và chạy tới trước, gift = tăng tốc. Về đích đầu tiên thắng; hết giờ thì ai xa nhất thắng. Top 3: +5/+3/+2.':
-    'Send likes to get a racer and run forward, gifts = boost. First to the finish wins; at time-out the furthest wins. Top 3: +5/+3/+2.',
-  'Vào vạch xuất phát': 'Join the starting line',
-  'Chạy bằng comment (chống spam áp dụng)': 'Run by comment (spam cooldown applies)',
-  'Chạy / tăng tốc': 'Run / boost',
-  'Độ dài đường đua': 'Track length',
-  'Bước chạy mỗi gift': 'Steps per gift',
-  'Bước chạy mỗi !run': 'Steps per !run',
-  '0 = tắt lệnh !run.': '0 = !run command off.',
+  'Mỗi câu hỏi comment a, b, c hoặc d. Hết giờ câu hỏi, ai trả lời đúng tiến +1 bước (ai đúng trước tiến trước). Ai về đích đầu tiên thắng và được chúc mừng trên màn hình; top 3 được thưởng điểm.':
+    'Comment a, b, c or d for each question. When the question closes, everyone who answered correctly moves +1 step (first correct answer moves first). First to the finish wins and is celebrated on screen; the top 3 earn bonus points.',
+  'Trả lời câu hỏi: đúng = +1 bước (chỉ tính lần đầu)': 'Answer the question: correct = +1 step (first answer only)',
+  'Số bước về đích': 'Steps to the finish',
+  'Mỗi câu trả lời đúng = 1 bước.': 'Each correct answer = 1 step.',
+  'Tối đa số câu mỗi cuộc đua': 'Max questions per race',
+  'Hết số câu mà chưa ai về đích thì người dẫn đầu thắng.': 'If nobody finishes within that many questions, the leader wins.',
   'Nhân vật': 'Racer',
-  '{name} vào vạch xuất phát': '{name} is on the starting line',
   '🏆 {name} về đích đầu tiên!': '🏆 {name} finished first!',
-  '🏆 {name} chạy xa nhất!': '🏆 {name} ran the furthest!',
-  'Không ai tham gia đua.': 'Nobody joined the race.',
-  '!join để vào • Tim{run} để chạy • Gift = +{n} bước': '!join to enter • Likes{run} to run • Gift = +{n} steps',
+  '🏆 {name} dẫn đầu khi hết câu hỏi!': '🏆 {name} led when the questions ran out!',
+  'Chưa ai trả lời đúng.': 'Nobody answered correctly.',
+  '{steps}/{goal} bước': '{steps}/{goal} steps',
+  '✅ Trả lời đúng để xuất phát!': '✅ Answer correctly to start running!',
+  '🏁 {name} thắng!': '🏁 {name} wins!',
+  '🏁 Kết thúc': '🏁 Finished',
+  'Câu {n}': 'Question {n}',
+  '✅ {n} người đúng: +1 bước': '✅ {n} correct: +1 step',
+  'Chưa ai đúng': 'Nobody got it right',
+  'Đúng = +1 bước · về đích: {goal} bước': 'Correct = +1 step · finish: {goal} steps',
 
   // Rock Paper Scissors (rockPaperScissors.ts)
   'Kéo Búa Bao ✊': 'Rock Paper Scissors ✊',

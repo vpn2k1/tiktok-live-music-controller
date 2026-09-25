@@ -9,10 +9,10 @@ Maintain a small, secure React + Electron TikTok LIVE music controller. UI must 
 - `src/App.tsx`: renderer state, player, live event processing, user-configurable rules.
 - `electron/overlay-server.ts`: loopback-only HTTP + SSE server for the OBS overlay.
 - `electron/overlay-window.ts`: optional standalone overlay window for OBS Window Capture (URL built in main from whitelisted options).
-- `src/game/autoplay.ts` + `useAutoPlay.ts`: auto host (LIVE length, per-game switch timer, rotation, gift → switch game).
+- `src/game/autoplay.ts` + `useAutoPlay.ts`: game host — the play loop (a game replays round after round until a switch; gift / `!doigame` switches wait for the round to end), optional switch after N rounds / minutes, rotation, and the auto session (LIVE length).
 - `src/game/bankFile.ts`: bank file import (.txt `|`, .csv, tab rows, `#` comments) and per-line checks; samples live on each textarea `SettingField.sample`, saved via main's `dialog:save-text` (user picks the path).
 - `src/game/series.ts`: multi-question rounds with speed scoring (quiz, English answer games, hangman); `src/game/scoreboard.ts`: leaderboard for huge rooms; `src/shared/eventBatch.ts`: 100 ms event batches with overload caps.
-- `src/game/lobby.ts`: viewer game list (vote the next game by comment number / gifts) and the `!doigame` whitelist; rendered as the overlay game card. It lists the active game group (`groups` in `autoplay.ts`, edited in `GameLibrary.tsx`).
+- `src/game/lobby.ts`: viewer game list (vote the next game by comment number / gifts; no votes or a tie = announced random pick) and the `!doigame` whitelist; rendered as the overlay game card. It lists the active game group (`groups` in `autoplay.ts`, edited in `GameLibrary.tsx`).
 - `src/game/chatCommands.ts`: global chat commands (`!help`, `!rank`, host-only `!start/!stop/!cancel/!games`).
 - `tests/*.test.ts`: unit tests for the pure game modules (`npm test`).
 - `src/game/*`: game engine, controller hook (`useLiveGames`), registry, pure game plugins in `src/game/games/*`, Vietnamese/English word helpers, default English content in `src/game/content/`.
@@ -28,7 +28,7 @@ Maintain a small, secure React + Electron TikTok LIVE music controller. UI must 
 4. New viewer commands must be explicit whitelist rules.
 5. Do not expose raw local file paths to renderer. Use the tokenized `media://` protocol.
 6. Treat `tiktok-live-connector` as unofficial and failure-prone; surface errors instead of hiding them.
-7. The overlay server binds `127.0.0.1` only, checks the `Host` header, serves a fixed path whitelist, and receives only public display data (never file paths).
+7. The overlay server binds `127.0.0.1` only, checks the `Host` header, serves a fixed path whitelist, and receives only public display data (never file paths). Viewer profile pictures are the only remote content: HTTPS URLs on TikTok's image CDN, checked with `safeAvatarUrl` (`src/shared/avatar.ts`) in main and again in the overlay; the overlay CSP `img-src` allows only those hosts.
 8. Viewer chat commands go through the per-viewer cooldown (`CommandRateLimiter`).
 9. Host-only commands require the connected streamer's username, the configured moderator list, or `event.simulated` (set only by main's simulate IPC for the app's test tools).
 10. The overlay window never loads a renderer-supplied URL; it has no preload, runs sandboxed in its own session, denies popups and blocks navigation off the overlay origin (compare parsed `URL.origin`, never string prefixes). It is frameless: the page is the drag area and closes itself with `window.close()` (✕ / Esc); main reports open/closed via `overlay:window-changed`. Its only input back to the app is the URL-hash channel (`#act=menu.<n>` / `#act=pick-<i>.<n>`, parsed by `parseWindowAction` in main from `did-navigate-in-page`, origin-checked); add new actions only to that whitelist.

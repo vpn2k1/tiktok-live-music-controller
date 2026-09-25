@@ -1,13 +1,16 @@
 import { emojiGame, sentenceGame, translateGame, unscrambleGame } from './games/answerGames';
 import { bombGame } from './games/bomb';
 import { bossGame } from './games/boss';
+import { castleSiegeGame } from './games/castleSiege';
 import { crosswordGame } from './games/crossword';
+import { duelGame } from './games/duel';
 import { englishWordChainGame } from './games/englishWordChain';
 import { estimateGame } from './games/estimate';
 import { fastestFingerGame } from './games/fastestFinger';
 import { goldenBellGame } from './games/goldenBell';
 import { guessNumberGame } from './games/guessNumber';
 import { hangmanGame } from './games/hangman';
+import { kingOfHillGame } from './games/kingOfHill';
 import {
   chineseQuizGame,
   chineseVocabGame,
@@ -26,6 +29,7 @@ import { englishQuizGame, quizGame } from './games/quiz';
 import { raceGame } from './games/race';
 import { rockPaperScissorsGame } from './games/rockPaperScissors';
 import { teamBattleGame } from './games/teamBattle';
+import { teamQuizGame } from './games/teamQuiz';
 import { trueFalseGame } from './games/trueFalse';
 import { emojiVietnameseGame, riddleGame } from './games/vietnameseGames';
 import { wheelGame } from './games/wheel';
@@ -53,9 +57,14 @@ export const GAMES: AnyGame[] = [
   wordChainGame,
   guessNumberGame,
   fastestFingerGame,
-  teamBattleGame,
   raceGame,
   wheelGame,
+  // Versus
+  castleSiegeGame,
+  teamQuizGame,
+  duelGame,
+  kingOfHillGame,
+  teamBattleGame,
   // English
   trueFalseGame,
   unscrambleGame,

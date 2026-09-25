@@ -18,15 +18,34 @@ export const EN_CORE: Record<string, string> = {
 
   // useAutoPlay.ts
   'LIVE thêm {minutes} phút': 'LIVE extended by {minutes} min',
-  'Đã tắt tự động chuyển game': 'Auto game switching turned off',
-  '🎮 {title} được chọn!': '🎮 {title} wins the vote!',
+  'Đã tắt tự động': 'Auto turned off',
   '🎮 Chơi {title}!': '🎮 Let’s play {title}!',
   'Không game nào trong danh sách bắt đầu được': 'None of the games in the list could start',
   'Không game nào trong danh sách bắt đầu được: đã tắt tự động': 'None of the games in the list could start: auto turned off',
-  'Tự động: mỗi game {switchMinutes} phút, LIVE {liveMinutes} phút': 'Auto: {switchMinutes} min per game, {liveMinutes} min LIVE',
-  'Tự động: mỗi game {switchMinutes} phút': 'Auto: {switchMinutes} min per game',
+  'Tự động: LIVE {liveMinutes} phút': 'Auto: {liveMinutes} min LIVE',
+  'Tự động: bật': 'Auto: on',
   '⏰ Hết giờ LIVE — cảm ơn mọi người đã chơi!': '⏰ LIVE’s over — thanks for playing!',
-  'Hết giờ LIVE: đã tắt tự động chuyển game': 'LIVE time is up: auto game switching turned off',
+  'Hết giờ LIVE: đã tắt tự động': 'LIVE time is up: auto turned off',
+  'Hết ván này sẽ đổi game.': 'New game when this round ends.',
+  '🔄 Streamer đổi game!': '🔄 The host is switching the game!',
+
+  // lobby.ts: closing the vote
+  '🎲 Không ai chọn — bốc ngẫu nhiên: {title}!': '🎲 Nobody voted — random pick: {title}!',
+  '🎲 Hoà phiếu ({count} game) — bốc ngẫu nhiên: {title}!': '🎲 Tied vote ({count} games) — random pick: {title}!',
+  '✅ Nhiều phiếu nhất: {title}!': '✅ Most votes: {title}!',
+  '▶ {title} bắt đầu ngay sau đây!': '▶ {title} starts in a moment!',
+
+  // series.ts + overlay: end-of-round celebration
+  '🏁 Tổng kết {asked} câu': '🏁 Final after {asked} questions',
+  '🎉 Chúc mừng! 🎉': '🎉 Congratulations! 🎉',
+  '🏆 Chúc mừng top {n}!': '🏆 Congrats, top {n}!',
+  '🔑 Từ khóa: {keyword}': '🔑 Keyword: {keyword}',
+  '{n} điểm công/thủ': '{n} attack/defence pts',
+  '{n} trận thắng': '{n} wins',
+  '🤠 Tay súng nhanh nhất': '🤠 Fastest guns',
+  '👑 Giữ ngai lâu nhất': '👑 Longest reigns',
+  '🃏 Trí nhớ siêu đỉnh': '🃏 Memory masters',
+  '⚔️ {damage} sát thương': '⚔️ {damage} damage',
   '⏰ Còn 5 phút nữa là hết LIVE!': '⏰ 5 minutes of LIVE left!',
   '🔄 Đổi game: {title}': '🔄 Next game: {title}',
   '🔄 {nickname} đổi game!': '🔄 {nickname} switched the game!',
@@ -80,5 +99,6 @@ export const EN_CORE: Record<string, string> = {
   'Chọn và bắt đầu game theo tên': 'Pick and start a game by name',
   'Chốt kết quả vòng đang chạy': 'End and score the current round',
   'Huỷ vòng đang chạy': 'Cancel the current round',
-  'Hiện danh sách tên game cho !start': 'List the game names for !start'
+  'Hiện danh sách tên game cho !start': 'List the game names for !start',
+  'Đối kháng ⚔️': 'Versus ⚔️'
 };

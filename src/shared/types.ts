@@ -11,6 +11,8 @@ export interface BaseLiveEvent {
   user: string;
   nickname: string;
   at: number;
+  /** Profile picture URL (HTTPS, TikTok CDN only; checked in main). */
+  avatar?: string;
   /** Set by main for events created by the app's test tools (never for real TikTok events). */
   simulated?: boolean;
 }
@@ -104,17 +106,21 @@ export interface OverlayMenuItem {
   number: number;
   icon: string;
   name: string;
-  /** Game category (fun / english / japanese / chinese): tile color. */
+  /** Game category (fun / versus / english / japanese / chinese): tile color. */
   category: string;
   votes: number;
   /** Share of all votes, 0–100. */
   percent: number;
-  /** Has the most votes (and at least one). */
+  /** Has the most votes (and at least one); after the vote, the picked game. */
   leader: boolean;
+  /** The game picked when voting closed. */
+  picked?: boolean;
 }
 
 export interface OverlayMenu {
   items: OverlayMenuItem[];
+  /** Voting is closed and the picked game is being announced. */
+  decided?: boolean;
 }
 
 export interface OverlayProgress {
@@ -131,7 +137,10 @@ export interface OverlayTeam {
 
 export interface OverlayRace {
   icon: string;
-  lanes: { label: string; percent: number }[];
+  /** `value`: e.g. "3/7" steps. */
+  lanes: { label: string; percent: number; value?: string }[];
+  /** Shown while nobody has moved yet (default: "tap likes to start"). */
+  emptyHint?: string;
 }
 
 /** Visual treatment hints a game can ask the overlay for. */
@@ -155,6 +164,12 @@ export interface OverlayEffect {
   text?: string;
   /** Viewer the effect is about (for avatar badges). */
   user?: string;
+  /**
+   * `win` only: the big "congratulations" screen. One entry = the winner in
+   * the spotlight (e.g. first across the finish line); 2–3 = a podium of the
+   * round's top 3 (names + avatars + score).
+   */
+  podium?: { name: string; value?: string }[];
 }
 
 export interface OverlayWheel {
@@ -213,9 +228,11 @@ export interface OverlayGameView {
 
 export interface OverlayAlert {
   id: number;
-  /** `info`: replies to chat commands such as !rank / !help. */
-  kind: 'follow' | 'join' | 'info';
+  /** `info`: replies to chat commands such as !rank / !help; `like`: a heart (avatar + ❤️ only). */
+  kind: 'follow' | 'join' | 'like' | 'info';
   text: string;
+  /** Viewer shown with an avatar and in bold ("@usera đã tham gia"). */
+  name?: string;
 }
 
 /** Snapshot pushed to the OBS overlay. Only public, display-ready data. */
@@ -236,7 +253,10 @@ export interface OverlayState {
   effects: OverlayEffect[];
   leaderboard: ScoreEntry[];
   nowPlaying: string | null;
-  alert: OverlayAlert | null;
+  /** Recent follow / join / reply bubbles (oldest first); each floats up and fades on the overlay. */
+  alerts: OverlayAlert[];
+  /** Profile pictures of the viewers shown (key = the name the overlay draws: nickname or username). */
+  avatars?: Record<string, string>;
   /** App language, for the overlay's own labels (game texts arrive translated). */
   lang: Language;
   updatedAt: number;

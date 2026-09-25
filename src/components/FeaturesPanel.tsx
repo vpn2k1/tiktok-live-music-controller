@@ -94,13 +94,20 @@ export default function FeaturesPanel({ features, onChange, cooldownSeconds, onC
             <Toggle
               checked={features.welcomeEnabled}
               onChange={(value) => onChange({ welcomeEnabled: value })}
-              label={t('Hiện lời cảm ơn khi có người follow')}
+              label={t('Hiện người follow bay lên màn hình')}
+              hint={t('Avatar + tên nhỏ bay từ dưới lên giữa màn hình rồi biến mất')}
             />
             <Toggle
               checked={features.welcomeJoins}
               onChange={(value) => onChange({ welcomeJoins: value })}
-              label={t('Chào cả người vào phòng')}
-              hint={t('Phòng đông sẽ bỏ bớt, follow được ưu tiên')}
+              label={t('Hiện cả người vào phòng')}
+              hint={t('Phòng đông chỉ hiện ~1 người mỗi giây, follow luôn hiện')}
+            />
+            <Toggle
+              checked={features.welcomeLikes}
+              onChange={(value) => onChange({ welcomeLikes: value })}
+              label={t('Hiện tim bay lên khi thả tim')}
+              hint={t('Chỉ avatar + ❤️; phòng đông tự bỏ bớt (tối đa 6 tim cùng lúc)')}
             />
             <Toggle
               checked={features.welcomeSound}

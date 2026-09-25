@@ -28,6 +28,8 @@ export interface GameState {
   /** Session leaderboard keyed by TikTok uniqueId; survives between rounds. */
   scoreboard: Scoreboard;
   scoreVersion: number;
+  /** Rounds cancelled so far: the play loop stops when this changes (see useAutoPlay). */
+  cancels: number;
 }
 
 export interface PointAward {
@@ -50,7 +52,8 @@ export function createGameState(): GameState {
     data: null,
     memory: {},
     scoreboard: new Scoreboard(),
-    scoreVersion: 0
+    scoreVersion: 0,
+    cancels: 0
   };
 }
 
@@ -88,6 +91,11 @@ export function endRound(state: GameState, message: string, data: unknown = stat
   if (state.phase !== 'running') return state;
   const memory = state.kind ? { ...state.memory, [state.kind]: data } : state.memory;
   return { ...state, phase: 'ended', endsAt: null, timerStartedAt: null, message, data, memory };
+}
+
+/** Drops the round without a result (Huỷ / !cancel); the game stops playing. */
+export function cancelRound(state: GameState): GameState {
+  return { ...clearRound(state), cancels: state.cancels + 1 };
 }
 
 /** Hides the round from the overlay but keeps the session leaderboard. */

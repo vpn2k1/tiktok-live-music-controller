@@ -10,6 +10,7 @@ import {
   progressLabel,
   rankingRows,
   resultHint,
+  roundEndEffect,
   scoreQuestion,
   SERIES_SETTINGS,
   startSeries,
@@ -202,12 +203,11 @@ export function createQuizGame(options: QuizGameOptions): GameDefinition<QuizRou
       const scored = state.stage === 'ask' ? scoreQuestion(state, config) : null;
       scored?.commit();
       const done: QuizRound = { ...state, stage: 'done', last: scored?.result ?? state.last };
-      const top = state.totals.top(1)[0];
       return {
         state: done,
         awards: scored?.awards ?? [],
         message: finalMessage(done),
-        effects: [top ? { kind: 'win', text: `🏆 ${top.nickname}`, user: top.nickname } : { kind: 'lose', text: t('Hết lượt') }]
+        effects: [roundEndEffect(done)]
       };
     },
 

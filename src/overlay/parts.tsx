@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import type { OverlayCards, OverlayCrossword, OverlayMenu, OverlayRace, OverlayRow, OverlayTeam, OverlayWheel } from '../shared/types';
 import { t } from '../shared/i18n';
 
@@ -15,9 +15,33 @@ export function nameColor(name: string): string {
   return `hsl(${hue} 78% 56%)`;
 }
 
-/** Colored initial badge standing in for the viewer's profile picture. */
+/** Viewer profile pictures by displayed name (OverlayState.avatars, re-checked by the overlay). */
+export const AvatarContext = createContext<Record<string, string>>({});
+/** Pictures that failed to load (expired link, offline): don't retry them. */
+const failedAvatars = new Set<string>();
+
+/** The viewer's TikTok profile picture, or a colored initial badge when there is none. */
 export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
+  const avatars = useContext(AvatarContext);
+  const [failed, setFailed] = useState(false);
   const clean = name.replace(/^@/, '').trim();
+  const url = avatars[clean];
+  if (url && !failed && !failedAvatars.has(url)) {
+    return (
+      <img
+        className="ov-avatar photo"
+        src={url}
+        alt=""
+        style={{ width: size, height: size }}
+        referrerPolicy="no-referrer"
+        decoding="async"
+        onError={() => {
+          failedAvatars.add(url);
+          setFailed(true);
+        }}
+      />
+    );
+  }
   const initial = Array.from(clean)[0]?.toUpperCase() ?? '?';
   return (
     <span className="ov-avatar" style={{ width: size, height: size, fontSize: size * 0.48, background: nameColor(clean) }} aria-hidden="true">
@@ -130,7 +154,7 @@ export function TugOfWar({ teams }: { teams: [OverlayTeam, OverlayTeam] }) {
 
 /** Race lanes with name badges riding on the track; the leader wears a crown. */
 export function RaceTrack({ race }: { race: OverlayRace }) {
-  if (!race.lanes.length) return <p className="ov-hint big">{t('❤️ Thả tim để xuất phát!')}</p>;
+  if (!race.lanes.length) return <p className="ov-hint big">{race.emptyHint ?? t('❤️ Thả tim để xuất phát!')}</p>;
   const flip = race.icon !== '🚀';
   return (
     <div className="ov-race">
@@ -143,7 +167,10 @@ export function RaceTrack({ race }: { race: OverlayRace }) {
             </span>
             <span className="ov-finish" aria-hidden="true" />
           </span>
-          <span className="ov-lane-name"><Avatar name={lane.label} size={20} />{lane.label}</span>
+          <span className="ov-lane-name">
+            <Avatar name={lane.label} size={20} />{lane.label}
+            {lane.value ? <em className="ov-lane-value">{lane.value}</em> : null}
+          </span>
         </div>
       ))}
     </div>
@@ -320,11 +347,11 @@ export function GameMenu({ menu, onPick }: { menu: OverlayMenu; onPick?: (number
   const listRef = useRef<HTMLOListElement | null>(null);
   const overflowing = useAutoScroll(listRef);
   return (
-    <ol ref={listRef} className={`ov-menu ${overflowing ? 'scrolling' : ''}`}>
+    <ol ref={listRef} className={`ov-menu ${overflowing ? 'scrolling' : ''} ${menu.decided ? 'decided' : ''}`}>
       {menu.items.map((item, index) => (
         <li
           key={item.number}
-          className={`ov-menu-item cat-${item.category} ${item.leader ? 'leader' : ''} ${onPick ? 'pickable' : ''}`}
+          className={`ov-menu-item cat-${item.category} ${item.leader ? 'leader' : ''} ${item.picked ? 'picked' : ''} ${onPick ? 'pickable' : ''}`}
           style={{ '--pct': `${item.percent}%`, animationDelay: `${Math.min(index, 20) * 30}ms` } as CSSProperties}
           onClick={onPick ? () => onPick(item.number) : undefined}
           title={onPick ? t('Chơi {title}', { title: item.name }) : undefined}
@@ -347,5 +374,68 @@ export function GameMenu({ menu, onPick }: { menu: OverlayMenu; onPick?: (number
         </li>
       ))}
     </ol>
+  );
+}
+
+/** Smallest zoom FitBox uses (below this, text gets unreadable; the rest is clipped). */
+const MIN_FIT_ZOOM = 0.45;
+
+/**
+ * Shrinks its content (with CSS zoom, so it re-flows) until it fits: the width
+ * always, and the height too when `fitHeight` (full-screen cards, where the
+ * card has a fixed height). Content is never enlarged.
+ */
+export function FitBox({ children, fitHeight }: { children: ReactNode; fitHeight: boolean }) {
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return undefined;
+    let pending = false;
+    const fit = () => {
+      let zoom = 1;
+      inner.style.zoom = '1';
+      outer.classList.remove('overflowing');
+      for (let pass = 0; pass < 4; pass += 1) {
+        const room = outer.getBoundingClientRect();
+        const used = inner.getBoundingClientRect();
+        const byWidth = inner.scrollWidth > inner.clientWidth + 1 ? inner.clientWidth / inner.scrollWidth : 1;
+        const byHeight = fitHeight && used.height > room.height + 1 ? room.height / used.height : 1;
+        const ratio = Math.min(byWidth, byHeight);
+        if (ratio >= 0.995) break;
+        zoom = Math.max(MIN_FIT_ZOOM, zoom * ratio * 0.995);
+        inner.style.zoom = String(zoom);
+        if (zoom === MIN_FIT_ZOOM) break;
+      }
+      // Still too tall at the smallest zoom: the bottom fades out instead of being cut mid-line.
+      if (fitHeight && inner.getBoundingClientRect().height > outer.getBoundingClientRect().height + 1) outer.classList.add('overflowing');
+    };
+    // Not requestAnimationFrame: it pauses while the window is hidden or covered (OBS may
+    // capture such a window). Setting the zoom doesn't re-trigger these observers.
+    const schedule = () => {
+      if (pending) return;
+      pending = true;
+      queueMicrotask(() => {
+        pending = false;
+        fit();
+      });
+    };
+    fit();
+    const resize = new ResizeObserver(schedule);
+    resize.observe(outer);
+    const mutations = new MutationObserver(schedule);
+    mutations.observe(inner, { childList: true, subtree: true, characterData: true });
+    return () => {
+      resize.disconnect();
+      mutations.disconnect();
+    };
+  }, [fitHeight]);
+
+  return (
+    <div ref={outerRef} className={`ov-fit ${fitHeight ? 'fit-height' : ''}`}>
+      <div ref={innerRef} className="ov-fit-inner">{children}</div>
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import { t } from '../shared/i18n';
 import type { AudioTrack, LiveEvent, OverlayGameView, OverlayHowTo } from '../shared/types';
 import {
   addPoints,
+  cancelRound,
   clearRound,
   CommandRateLimiter,
   createGameState,
@@ -16,6 +17,7 @@ import {
 } from './engine';
 import { gameNames, HOST_ONLY, parseGlobalCommand, parseModerators } from './chatCommands';
 import { buildEnglishDictionary, parseEnglishDictionary } from './english';
+import { podiumEffect } from './series';
 import { DEFAULT_FEATURES, likePoints, normalizeFeatures, type LiveFeatures } from './features';
 import { GAMES, getGame, normalizeConfig } from './registry';
 import { EMPTY_VIEW, type GameConfig, type GameContext, type GameInput, type HandleResult, type TestAction } from './types';
@@ -68,7 +70,7 @@ function loadWords(language: DictionaryLanguage): string[] {
   }
 }
 
-const CATEGORY_ACCENTS: Record<string, string> = { fun: '#7867ff', english: '#10b981', japanese: '#e11d48', chinese: '#dc2626' };
+const CATEGORY_ACCENTS: Record<string, string> = { fun: '#7867ff', versus: '#ef4444', english: '#10b981', japanese: '#e11d48', chinese: '#dc2626' };
 
 /** Icon chips telling viewers how to join, built from the game's command list (translated). */
 function howToChips(commands: { usage: string; description: string }[]): OverlayHowTo[] {
@@ -160,10 +162,9 @@ export function useLiveGames(options: LiveGamesOptions) {
     if (current.phase !== 'running' || !definition) return;
 
     const result = definition.finish(current.data, configFor(definition.id), context());
-    const best = [...result.awards].sort((a, b) => b.points - a.points)[0];
-    const effects = result.effects ?? [best
-      ? { kind: 'win' as const, text: result.message, user: best.nickname }
-      : { kind: 'lose' as const, text: result.message }];
+    // Default celebration: the round's top 3 by points on a podium.
+    const top = [...result.awards].filter((award) => award.points > 0).sort((a, b) => b.points - a.points).slice(0, 3);
+    const effects = result.effects ?? [top.length ? podiumEffect(top, result.message) : { kind: 'lose' as const, text: result.message }];
     updateGame((old) => {
       const ended = addPoints(endRound(old, result.message, result.state), result.awards);
       return quiet ? ended : pushEffects(ended, effects);
@@ -230,8 +231,9 @@ export function useLiveGames(options: LiveGamesOptions) {
     return true;
   }, [configFor, context, updateGame]);
 
+  /** Drops the round without a result; the play loop stops (see useAutoPlay). */
   const cancel = useCallback(() => {
-    updateGame(clearRound);
+    updateGame(cancelRound);
     optionsRef.current.onAction(t('Đã huỷ vòng chơi'));
   }, [updateGame]);
 

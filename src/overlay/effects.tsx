@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import type { OverlayEffect } from '../shared/types';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import type { OverlayAlert, OverlayEffect } from '../shared/types';
 import { t } from '../shared/i18n';
 import { Avatar } from './parts';
 
 const POPUP_MS = 1400;
 const BANNER_MS: Partial<Record<OverlayEffect['kind'], number>> = { start: 1900, win: 4200, lose: 2600 };
+/** The big "congratulations" screen (winner / top 3) stays longer; the round gap is at least 3 s more. */
+const CELEBRATION_MS = 6500;
 const MAX_POPUPS = 6;
 
 /**
@@ -34,7 +36,7 @@ export function useEffectPlayer(effects: OverlayEffect[]) {
 
     const later = (ms: number, fn: () => void) => timers.current.push(window.setTimeout(fn, ms));
     for (const effect of fresh) {
-      const bannerMs = BANNER_MS[effect.kind];
+      const bannerMs = effect.kind === 'win' && effect.podium?.length ? CELEBRATION_MS : BANNER_MS[effect.kind];
       if (bannerMs) {
         setBanner(effect);
         later(bannerMs, () => setBanner((current) => (current?.id === effect.id ? null : current)));
@@ -64,9 +66,56 @@ export function Popups({ popups }: { popups: OverlayEffect[] }) {
   );
 }
 
+const PODIUM_MEDALS = ['🥇', '🥈', '🥉'];
+
+/**
+ * End-of-round "congratulations": the winner alone in the spotlight (big
+ * avatar, crown, name), or the top 3 on a podium (2nd · 1st · 3rd).
+ */
+function Celebration({ effect, podium }: { effect: OverlayEffect; podium: NonNullable<OverlayEffect['podium']> }) {
+  const [first] = podium;
+  if (podium.length === 1 && first) {
+    return (
+      <div key={effect.id} className="ov-banner win celebrate" role="status">
+        <span className="ov-banner-rays" aria-hidden="true" />
+        <strong className="ov-celebrate-title">{t('🎉 Chúc mừng! 🎉')}</strong>
+        <span className="ov-spotlight">
+          <span className="ov-celebrate-crown" aria-hidden="true">👑</span>
+          <Avatar name={first.name} size={120} />
+        </span>
+        <strong className="ov-celebrate-name">{first.name}</strong>
+        {first.value ? <span className="ov-celebrate-value">{first.value}</span> : null}
+        {effect.text ? <span className="ov-banner-text">{effect.text}</span> : null}
+      </div>
+    );
+  }
+  // Drawn 2nd · 1st · 3rd so the winner stands in the middle, highest.
+  const places = podium.slice(0, 3).map((entry, index) => ({ ...entry, place: index + 1 }));
+  const order = [places[1], places[0], places[2]].filter((entry) => entry != null);
+  return (
+    <div key={effect.id} className="ov-banner win celebrate" role="status">
+      <span className="ov-banner-rays" aria-hidden="true" />
+      <strong className="ov-celebrate-title">{t('🏆 Chúc mừng top {n}!', { n: places.length })}</strong>
+      <div className="ov-podium">
+        {order.map((entry) => (
+          <div key={entry.place} className={`ov-podium-slot place-${entry.place}`}>
+            {entry.place === 1 ? <span className="ov-celebrate-crown" aria-hidden="true">👑</span> : null}
+            <Avatar name={entry.name} size={80} />
+            <strong className="ov-podium-name">{entry.name}</strong>
+            {entry.value ? <span className="ov-podium-value">{entry.value}</span> : null}
+            <span className="ov-podium-block">{PODIUM_MEDALS[entry.place - 1]}</span>
+          </div>
+        ))}
+      </div>
+      {effect.text ? <span className="ov-banner-text">{effect.text}</span> : null}
+    </div>
+  );
+}
+
 /** Full-frame banner for round start / win / time up. */
 export function EffectBanner({ effect }: { effect: OverlayEffect | null }) {
   if (!effect) return null;
+  if (effect.kind === 'win' && effect.podium?.length) return <Celebration effect={effect} podium={effect.podium} />;
   const icon = effect.kind === 'start' ? '🎮' : effect.kind === 'win' ? '🏆' : '⏰';
   const title = t(effect.kind === 'start' ? 'Bắt đầu!' : effect.kind === 'win' ? 'Chiến thắng!' : 'Hết giờ!');
   return (
@@ -141,4 +190,37 @@ export function Confetti({ fire }: { fire: number }) {
   }, [fire]);
 
   return <canvas ref={canvasRef} className="ov-confetti" aria-hidden="true" />;
+}
+
+const ALERT_ICONS: Record<OverlayAlert['kind'], string> = { follow: '💖', join: '👋', like: '❤️', info: '💬' };
+
+/**
+ * Follow / join bubbles (avatar + small name), like hearts (avatar + ❤️) and
+ * replies: transparent, each rises from the bottom of the frame (bubbles
+ * alternate bottom-left / bottom-right, hearts go up on the right) to about
+ * mid-screen and fades out. `rise` = travel distance in the item's own px.
+ */
+export function AlertFeed({ alerts, rise }: { alerts: OverlayAlert[]; rise: number }) {
+  return (
+    <div className="ov-feed" style={{ '--rise': `${Math.round(rise)}px` } as CSSProperties}>
+      {alerts.map((alert) => {
+        const heart = alert.kind === 'like';
+        const side = heart || alert.id % 2 === 0 ? 'right' : 'left';
+        // Sideways offset so items that start close together don't cover each other.
+        const offset = heart ? 3 + ((alert.id * 53) % 7) * 2.2 : 3 + ((alert.id * 37) % 5) * 1.6;
+        return (
+          <div
+            key={alert.id}
+            className={`ov-feed-item ${alert.kind} ${side}`}
+            style={{ [side]: `${offset}%` } as CSSProperties}
+            title={alert.text}
+          >
+            {alert.name ? <Avatar name={alert.name.replace(/^@/, '')} size={heart ? 30 : 24} /> : null}
+            {heart ? null : <span className="ov-feed-text">{alert.kind === 'info' || !alert.name ? alert.text : alert.name}</span>}
+            <span className="ov-feed-icon">{ALERT_ICONS[alert.kind]}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }

@@ -442,6 +442,7 @@ h1 { font-weight: 800; font-size: 30px; letter-spacing: 0; text-shadow: 0 3px 0 
 .game-card-icon.english { background: linear-gradient(180deg, #6ee7b7 0 45%, #059669 50%); }
 .game-card-icon.japanese { background: linear-gradient(180deg, #fda4af 0 45%, #e11d48 50%); }
 .game-card-icon.chinese { background: linear-gradient(180deg, #fcd34d 0 45%, #dc2626 50%); }
+.game-card-icon.versus { background: linear-gradient(180deg, #fca5a5 0 45%, #b91c1c 50%); }
 .game-card-icon.wide { font-size: 13px; letter-spacing: -1px; }
 .game-card-text { display: grid; gap: 4px; min-width: 0; }
 .game-card-title strong { font-weight: 800; font-size: 15px; }

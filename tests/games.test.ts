@@ -61,8 +61,8 @@ test('vietnamese words', () => {
 });
 
 test('registry and config normalization', () => {
-  assert.equal(GAMES.length, 35);
-  assert.equal(new Set(GAMES.map((g) => g.id)).size, 35);
+  assert.equal(GAMES.length, 39);
+  assert.equal(new Set(GAMES.map((g) => g.id)).size, 39);
   // Every `!start <name>` name must point to exactly one game.
   const names = GAMES.flatMap((g) => gameNames(g).map((name) => [name, g.id] as const));
   for (const [name, id] of names) assert.deepEqual([...new Set(names.filter(([other]) => other === name).map(([, owner]) => owner))], [id], `name "${name}" is shared`);
@@ -192,15 +192,83 @@ test('team battle', () => {
   assert.equal(joins.members.e, undefined);
 });
 
-test('race', () => {
-  const { state, results, finish } = play('race', { finishLine: 100, giftBoost: 15 }, [like('a', 50), gift('b', 2), like('c', 10), gift('b', 100)]);
-  assert.equal(results[3].finish, true);
-  assert.equal(state.winner.user, 'b');
-  assert.deepEqual(finish().awards.map((a: any) => [a.user, a.points]), [['b', 5], ['a', 3], ['c', 2]]);
-  const cmd = play('race', { chatStep: 4 }, [chat('a', '!join'), chat('a', '!join'), chat('b', '!run'), chat('b', 'run')]);
-  assert.equal(cmd.state.racers.a.distance, 0);
-  assert.equal(cmd.state.racers.b.distance, 4);
-  assert.equal(cmd.results[3], null);
+test('race: correct answers move +1 step, first correct first; first to the finish wins', () => {
+  const bank = ['Q1 | x | y | A', 'Q2 | x | y | B', 'Q3 | x | y | A'].join('\n');
+  const g = game('race');
+  const c = normalizeConfig(g, { questions: bank, goal: 2, seconds: 10, reveal: 2 } as any);
+  const started = g.start(c, startCtx());
+  assert.ok(!('error' in started));
+  let state = started.state;
+  const answer = (user: string, correct: boolean) => {
+    const letter = correct ? ['A', 'B'][state.question.correct] : ['B', 'A'][state.question.correct];
+    const r = g.handle(state, chat(user, letter.toLowerCase()), c, ctx(2000));
+    r.commit?.();
+    state = r.state;
+    return r;
+  };
+  assert.equal(g.handle(state, chat('a', 'hello'), c, ctx()), null, 'normal chat is ignored');
+
+  // Question 1: b answers first, then a; c is wrong.
+  answer('b', true);
+  answer('a', true);
+  answer('c', false);
+  assert.equal(answer('b', false).consumed, true, 'only the first answer counts');
+  let r = step(g, state, c, 11_000);
+  state = r.state;
+  assert.equal(state.stage, 'reveal');
+  assert.equal(r.finish, false);
+  assert.deepEqual(state.leaders.map((racer: any) => [racer.user, racer.steps]), [['b', 1], ['a', 1]], 'same step: first correct answer is ahead');
+  assert.deepEqual(r.awards.map((award: any) => award.user), ['b', 'a']);
+  assert.equal(g.view(state, c).race.lanes[0].value, '1/2');
+
+  // Question 2: a answers before b; both reach the finish, a answered first and wins.
+  state = step(g, state, c, 13_000).state;
+  assert.equal(state.stage, 'ask');
+  assert.equal(state.number, 2);
+  answer('a', true);
+  answer('b', true);
+  r = step(g, state, c, 23_000);
+  state = r.state;
+  assert.equal(r.finish, true, 'the race ends when someone crosses the line');
+  assert.equal(state.winner.user, 'a');
+
+  const done = g.finish(state, c, ctx());
+  assert.equal(done.state.stage, 'done');
+  assert.deepEqual(done.awards.map((award: any) => [award.user, award.points]), [['a', 100], ['b', 50]]);
+  assert.equal(done.effects[0].kind, 'win');
+  assert.deepEqual(done.effects[0].podium, [{ name: 'A', value: '2/2 bước' }], 'the winner alone in the spotlight');
+
+  // Out of questions: the leader wins; nobody correct = no winner.
+  const limited = normalizeConfig(g, { questions: bank, goal: 10, maxQuestions: 3 } as any);
+  let s2 = g.start(limited, startCtx()).state;
+  const r1 = g.handle(s2, chat('z', ['a', 'b'][s2.question.correct]), limited, ctx());
+  r1.commit?.();
+  s2 = r1.state;
+  for (let i = 0; i < 5 && s2.stage !== 'done'; i += 1) {
+    const next = step(g, s2, limited, 50_000 + i * 20_000);
+    if (!next) break;
+    s2 = next.state;
+  }
+  assert.equal(s2.number, 3, 'stops after maxQuestions');
+  assert.equal(g.advance(s2, limited, ctx()), null);
+  assert.equal(g.finish(s2, limited, ctx()).state.winner.user, 'z');
+  assert.equal(g.finish(g.start(limited, startCtx()).state, limited, ctx()).effects[0].kind, 'lose');
+});
+
+test('quiz rounds end with a top-3 podium (names for the avatars)', () => {
+  const g = game('quiz');
+  const c = normalizeConfig(g, { questions: 'Q | x | y | A', count: 1 } as any);
+  let state = g.start(c, startCtx()).state;
+  for (const user of ['a', 'b', 'c', 'd']) {
+    const r = g.handle(state, chat(user, 'a'), c, ctx(1000 + user.charCodeAt(0) * 100));
+    r.commit?.();
+    state = r.state;
+  }
+  state = step(g, state, c, 20_000).state;
+  const done = g.finish(state, c, ctx());
+  assert.equal(done.effects[0].kind, 'win');
+  assert.deepEqual(done.effects[0].podium.map((entry: any) => entry.name), ['A', 'B', 'C'], 'fastest correct answers, top 3 only');
+  assert.ok(done.effects[0].podium.every((entry: any) => /đ$/.test(entry.value)));
 });
 
 test('wheel', () => {

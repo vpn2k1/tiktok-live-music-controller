@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { AVATAR_CSP_SOURCES } from '../src/shared/avatar';
 import { OVERLAY_PORT, OVERLAY_STREAM_PATH } from '../src/shared/overlay';
 import type { OverlayInfo, OverlayState } from '../src/shared/types';
 
@@ -20,7 +21,8 @@ const CSP = [
   "default-src 'none'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  // Viewer profile pictures: TikTok's image CDN only.
+  `img-src 'self' data: ${AVATAR_CSP_SOURCES}`,
   "font-src 'self'",
   "connect-src 'self'",
   "base-uri 'none'",

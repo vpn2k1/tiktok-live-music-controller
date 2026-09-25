@@ -1,11 +1,18 @@
 /**
- * Auto host: runs games back to back for the length of a LIVE, switching game
- * every `switchMinutes`, and lets viewers switch game early with a gift.
- * Everything here is pure; `useAutoPlay` owns the timers.
+ * Game host: a started game plays round after round without end (the play
+ * loop) until someone asks to switch — a gift, `!doigame`, or (optionally)
+ * a number of rounds / minutes. A switch never cuts a round: the round ends
+ * normally, its result is celebrated, then the game list opens. The optional
+ * auto session adds the LIVE length. Everything here is pure; `useAutoPlay`
+ * owns the timers.
  */
 import { t } from '../shared/i18n';
 
 export type AutoPlayOrder = 'sequential' | 'random';
+export type SwitchBy = 'command' | 'rounds' | 'time';
+
+/** Bumped when a default changes meaning; older stored settings get the new default. */
+export const AUTOPLAY_SETTINGS_VERSION = 2;
 
 /** A named set of games the streamer prepares before going LIVE. */
 export interface GameGroup {
@@ -26,8 +33,12 @@ export const MAX_GROUPS = 12;
 export interface AutoPlaySettings {
   /** Planned LIVE length; 0 = no limit. Autoplay stops when it runs out. */
   liveMinutes: number;
-  /** When to move to the next game: after `switchMinutes`, or after `roundsPerGame` rounds. */
-  switchBy: 'time' | 'rounds';
+  /**
+   * When a game ends by itself: `command` = never (it plays until a gift,
+   * `!doigame` or the host switches), or after `roundsPerGame` rounds, or
+   * after `switchMinutes`. Switching always waits for the round to end.
+   */
+  switchBy: SwitchBy;
   /** How long each game stays on before switching to the next one. */
   switchMinutes: number;
   /** Rounds (question sets) each game plays before switching. */
@@ -55,11 +66,12 @@ export interface AutoPlaySettings {
   lobbyGiftVotes: number;
   /** Distinct viewers typing !doigame needed to switch game; 0 = viewers can't. */
   switchCommandVotes: number;
+  version: number;
 }
 
 export const DEFAULT_AUTOPLAY: AutoPlaySettings = {
   liveMinutes: 60,
-  switchBy: 'rounds',
+  switchBy: 'command',
   switchMinutes: 5,
   roundsPerGame: 1,
   roundGapSeconds: 8,
@@ -75,7 +87,8 @@ export const DEFAULT_AUTOPLAY: AutoPlaySettings = {
   lobbyEnabled: true,
   lobbySeconds: 20,
   lobbyGiftVotes: 5,
-  switchCommandVotes: 5
+  switchCommandVotes: 5,
+  version: AUTOPLAY_SETTINGS_VERSION
 };
 
 type NumberKey = 'liveMinutes' | 'switchMinutes' | 'roundsPerGame' | 'roundGapSeconds' | 'giftCount' | 'giftCooldownSeconds'
@@ -98,6 +111,7 @@ export function defaultGroups(games: readonly GameInfo[]): GameGroup[] {
   const ids = (category?: string) => games.filter((game) => !category || game.category === category).map((game) => game.id);
   return [
     { id: 'fun', name: 'Giải trí 🎉', gameIds: ids('fun') },
+    { id: 'versus', name: 'Đối kháng ⚔️', gameIds: ids('versus') },
     { id: 'english', name: 'Tiếng Anh 🇬🇧', gameIds: ids('english') },
     { id: 'japanese', name: 'Tiếng Nhật 🇯🇵', gameIds: ids('japanese') },
     { id: 'chinese', name: 'Tiếng Trung 🇨🇳', gameIds: ids('chinese') },
@@ -165,7 +179,9 @@ export function normalizeAutoPlay(raw: unknown, games: readonly GameInfo[]): Aut
     result[key] = Number.isFinite(numeric) ? Math.min(max, Math.max(min, Math.round(numeric))) : DEFAULT_AUTOPLAY[key];
   }
   result.order = record.order === 'random' ? 'random' : 'sequential';
-  result.switchBy = record.switchBy === 'time' ? 'time' : 'rounds';
+  // Version 1 switched game after 1 round by default; games now play on until asked to switch.
+  const current = record.version === AUTOPLAY_SETTINGS_VERSION;
+  result.switchBy = current && (record.switchBy === 'time' || record.switchBy === 'rounds') ? record.switchBy : 'command';
   for (const key of ['startOnConnect', 'giftSwitchEnabled', 'lobbyEnabled'] as const) {
     result[key] = typeof record[key] === 'boolean' ? record[key] : DEFAULT_AUTOPLAY[key];
   }
@@ -204,18 +220,42 @@ export function giftMatches(settings: AutoPlaySettings, giftName: string): boole
   return settings.giftSwitchEnabled && wanted !== '' && giftName.trim().toLowerCase() === wanted;
 }
 
+/** The game being played continuously (null in the host = no game / the list is open). */
+export interface PlayLoop {
+  gameId: string;
+  /** When this game was chosen (for "switch after N minutes"). */
+  since: number;
+  /** When the last round ended; null while a round runs. */
+  idleSince: number | null;
+  /** Rounds of this game finished so far. */
+  roundsPlayed: number;
+  /** A switch was asked (gift, !doigame…): when the current round ends, go to the next game. */
+  switchPending: boolean;
+}
+
+export function createLoop(gameId: string, now: number): PlayLoop {
+  return { gameId, since: now, idleSince: null, roundsPlayed: 0, switchPending: false };
+}
+
+/**
+ * What the play loop should do now: nothing while a round runs (a switch is
+ * never forced mid-round) or while the last result is on screen, then either
+ * play another round of the same game or switch.
+ */
+export function loopStep(loop: PlayLoop, settings: AutoPlaySettings, roundRunning: boolean, now: number): 'none' | 'restart' | 'switch' {
+  if (roundRunning || loop.idleSince == null) return 'none';
+  if (now - loop.idleSince < settings.roundGapSeconds * 1000) return 'none';
+  if (loop.switchPending) return 'switch';
+  if (settings.switchBy === 'rounds' && loop.roundsPlayed >= settings.roundsPerGame) return 'switch';
+  if (settings.switchBy === 'time' && now - loop.since >= settings.switchMinutes * 60_000) return 'switch';
+  return 'restart';
+}
+
+/** The auto session: LIVE length on top of the play loop. */
 export interface AutoPlaySession {
   startedAt: number;
   /** null = no LIVE time limit. */
   liveEndsAt: number | null;
-  /** Game currently on (null until the first one starts). */
-  gameId: string | null;
-  /** When the current game's slot ends and the next game starts. */
-  slotEndsAt: number;
-  /** When the current game last stopped running (for the gap between rounds). */
-  idleSince: number | null;
-  /** Rounds of the current game finished so far ("rounds" mode). */
-  roundsPlayed: number;
   /** "LIVE is almost over" was already announced. */
   warned: boolean;
 }
@@ -224,10 +264,6 @@ export function createSession(settings: AutoPlaySettings, now: number): AutoPlay
   return {
     startedAt: now,
     liveEndsAt: settings.liveMinutes > 0 ? now + settings.liveMinutes * 60_000 : null,
-    gameId: null,
-    slotEndsAt: now,
-    idleSince: null,
-    roundsPlayed: 0,
     warned: false
   };
 }
@@ -235,19 +271,7 @@ export function createSession(settings: AutoPlaySettings, now: number): AutoPlay
 /** Announce the end of the LIVE this long before it. */
 export const LIVE_WARNING_MS = 5 * 60_000;
 
-export type AutoPlayStep = 'none' | 'end' | 'warn' | 'finish' | 'switch' | 'restart';
-
-/**
- * What the controller should do right now. When a game's time is up its round
- * is finished first ('finish'), and the next game starts after the round gap
- * so viewers see the result.
- */
-export function autoPlayStep(
-  session: AutoPlaySession,
-  settings: AutoPlaySettings,
-  roundRunning: boolean,
-  now: number
-): AutoPlayStep {
+export function sessionStep(session: AutoPlaySession, now: number): 'none' | 'end' | 'warn' {
   if (session.liveEndsAt != null && now >= session.liveEndsAt) return 'end';
   if (
     !session.warned &&
@@ -255,14 +279,7 @@ export function autoPlayStep(
     session.liveEndsAt - session.startedAt > LIVE_WARNING_MS &&
     session.liveEndsAt - now <= LIVE_WARNING_MS
   ) return 'warn';
-  if (session.gameId == null) return 'switch';
-  const byRounds = settings.switchBy === 'rounds';
-  // "rounds" mode never cuts a round short; "time" mode ends it when the game's time is up.
-  if (roundRunning) return !byRounds && now >= session.slotEndsAt ? 'finish' : 'none';
-  const gapOver = session.idleSince == null || now - session.idleSince >= settings.roundGapSeconds * 1000;
-  if (!gapOver) return 'none';
-  const gameDone = byRounds ? session.roundsPlayed >= settings.roundsPerGame : now >= session.slotEndsAt;
-  return gameDone ? 'switch' : 'restart';
+  return 'none';
 }
 
 export interface GiftSwitchState {
