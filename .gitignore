@@ -12,3 +12,6 @@ dist-electron/
 # Local environment
 .env
 .env.*
+
+# Packaged apps (npm run dist:mac / dist:win)
+release/

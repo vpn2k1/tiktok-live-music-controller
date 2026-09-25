@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, type OpenDialogOptions, type SaveDialogOptions } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,11 +15,30 @@ import type {
   SimulatedEventInput,
   TikTokStatus
 } from '../src/shared/types';
+import { EVENT_BATCH_MS, LiveEventBatcher, type LiveEventBatch } from '../src/shared/eventBatch';
+import { isLanguage, setLanguage, t } from '../src/shared/i18n';
+import { aiStatus, generateAi, setAiKey, setAiSettings, testAi } from './ai';
 import { publishOverlay, startOverlayServer, stopOverlayServer } from './overlay-server';
+import { closeOverlayWindow, onOverlayWindowAction, onOverlayWindowChange, openOverlayWindow } from './overlay-window';
+import type { OverlayWindowAction } from '../src/shared/overlay';
+import { diagnoseConnectError, isTikTokUsername, tiktokUsername } from '../src/shared/tiktokErrors';
+import { avatarFromUser } from '../src/shared/avatar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+
+/** Shown in menus (About / Hide / Quit), the taskbar and dialogs; packaged builds get it from electron-builder too. */
+const APP_NAME = 'TikLiveVPN';
+app.setName(APP_NAME);
+// Development builds always kept settings, saved state and AI keys in this folder
+// (named after the npm package); keep it so renaming the app loses nothing.
+if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'tiktok-live-music-electron'));
+// Windows groups taskbar buttons and notifications by this id (the packaged appId).
+if (process.platform === 'win32') app.setAppUserModelId('local.tiklivevpn');
+/** Unpackaged runs use Electron's own bundle; show the app icon anyway (packaged builds embed it). */
+const devIcon = app.isPackaged ? null : path.join(__dirname, '..', 'build', 'icon.png');
+const hasDevIcon = devIcon != null && fs.existsSync(devIcon);
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -76,18 +95,31 @@ function usernameOf(rawData: unknown): string {
   return stringValue(user.uniqueId || data.uniqueId || user.nickname || 'unknown');
 }
 
-function normalizeEvent(type: string, rawData: unknown = {}): LiveEvent {
+/** Readable text for connector errors (often `{ info, exception }`, not an Error). */
+function errorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  const record = asRecord(error);
+  const exception = record.exception instanceof Error ? record.exception.message : stringValue(record.exception);
+  const text = [stringValue(record.info), exception].filter(Boolean).join(': ');
+  return text || String(error);
+}
+
+function normalizeEvent(type: string, rawData: unknown = {}, simulated = false): LiveEvent {
   const data = asRecord(rawData);
   const user = nestedRecord(data, 'user');
   const gift = nestedRecord(data, 'gift');
   const giftDetails = nestedRecord(data, 'giftDetails');
+  // Profile picture: only HTTPS images on TikTok's CDN pass (see src/shared/avatar.ts).
+  const avatar = avatarFromUser(user, data.profilePictureUrl);
 
   const base = {
     id: crypto.randomUUID(),
     type,
     user: usernameOf(data),
     nickname: stringValue(user.nickname || data.nickname || usernameOf(data)),
-    at: Date.now()
+    at: Date.now(),
+    ...(avatar ? { avatar } : {}),
+    ...(simulated ? { simulated: true } : {})
   };
 
   if (type === 'chat') {
@@ -127,8 +159,17 @@ function normalizeEvent(type: string, rawData: unknown = {}): LiveEvent {
   return base;
 }
 
-function emitLiveEvent(type: string, data: unknown): void {
-  send<LiveEvent>('tiktok:event', normalizeEvent(type, data));
+// Events go to the renderer in batches (one IPC message + one React render per
+// EVENT_BATCH_MS) so busy rooms don't flood it; see LiveEventBatcher for overload rules.
+const eventBatcher = new LiveEventBatcher();
+
+function emitLiveEvent(type: string, data: unknown, simulated = false): void {
+  eventBatcher.push(normalizeEvent(type, data, simulated));
+}
+
+function flushLiveEvents(): void {
+  const batch = eventBatcher.flush();
+  if (batch) send<LiveEventBatch>('tiktok:events', batch);
 }
 
 async function disconnectTikTok(): Promise<boolean> {
@@ -148,9 +189,13 @@ async function disconnectTikTok(): Promise<boolean> {
 }
 
 async function connectTikTok(rawUsername: string) {
-  const username = String(rawUsername || '').trim().replace(/^@/, '');
+  // Accepts "@name", "name" or a tiktok.com/@name/live link.
+  const username = tiktokUsername(rawUsername);
   if (!username) {
     throw new Error('Hãy nhập username TikTok.');
+  }
+  if (!isTikTokUsername(username)) {
+    throw new Error('Username TikTok chỉ gồm chữ không dấu, số, "_" và "." (vd: ten_kenh.live). Hãy nhập username, không phải tên hiển thị.');
   }
 
   await disconnectTikTok();
@@ -160,6 +205,7 @@ async function connectTikTok(rawUsername: string) {
   liveConnection = connection;
 
   connection.on(ControlEvent.CONNECTED, (state: unknown) => {
+    if (liveConnection !== connection) return;
     const record = asRecord(state);
     emitStatus('connected', { username, roomId: stringValue(record.roomId) || null });
   });
@@ -171,10 +217,16 @@ async function connectTikTok(rawUsername: string) {
   });
 
   connection.on(ControlEvent.ERROR, (error: unknown) => {
-    emitStatus('error', {
-      username,
-      message: error instanceof Error ? error.message : String(error)
-    });
+    if (liveConnection !== connection) return;
+    // The connector also reports non-fatal errors (e.g. one undecodable message)
+    // while staying connected; keep the "connected" status so host detection and
+    // the UI don't treat the LIVE as offline.
+    if (connection.isConnected) {
+      // Status messages stay Vietnamese source texts; the renderer translates them (fixed prefix + detail).
+      emitStatus('connected', { username, message: 'Cảnh báo từ TikTok: {error}'.replace('{error}', () => errorText(error)) });
+      return;
+    }
+    emitStatus('error', { username, message: error instanceof Error ? diagnoseConnectError(error) : errorText(error) });
   });
 
   connection.on(WebcastEvent.CHAT, (data: unknown) => emitLiveEvent('chat', data));
@@ -205,22 +257,26 @@ async function connectTikTok(rawUsername: string) {
     };
   } catch (error) {
     if (liveConnection === connection) liveConnection = null;
-    emitStatus('error', {
-      username,
-      message: error instanceof Error ? error.message : String(error)
-    });
-    throw error;
+    // The connector's "Failed to retrieve Room ID from all sources." hides the real
+    // reason in error.config.requestErrs; show the cause and each source's detail.
+    const message = diagnoseConnectError(error);
+    emitStatus('error', { username, message });
+    throw new Error(message);
   }
 }
 
 function createWindow(): void {
+  // Open large enough for the two-column layout at the default 120% UI zoom.
+  const area = screen.getPrimaryDisplay().workAreaSize;
   mainWindow = new BrowserWindow({
-    width: 1320,
-    height: 860,
-    minWidth: 1050,
-    minHeight: 700,
+    width: Math.min(1720, Math.round(area.width * 0.94)),
+    height: Math.min(1100, Math.round(area.height * 0.94)),
+    // The layout is responsive (styles.css); keep room for one column of panels.
+    minWidth: 420,
+    minHeight: 560,
     backgroundColor: '#0b0d12',
-    title: 'TikTok LIVE Music Controller',
+    title: APP_NAME,
+    ...(hasDevIcon && devIcon ? { icon: devIcon } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -235,12 +291,20 @@ function createWindow(): void {
     void mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
+  // Never navigate away from the app (e.g. a file dropped onto the window) or open popups.
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // The overlay window is only useful while the controller is open.
+    closeOverlayWindow();
   });
 }
 
 app.whenReady().then(async () => {
+  if (hasDevIcon && devIcon) app.dock?.setIcon(devIcon);
+  setInterval(flushLiveEvents, EVENT_BATCH_MS);
   protocol.handle('media', async (request) => {
     try {
       const url = new URL(request.url);
@@ -273,10 +337,28 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Sample bank files: the renderer only supplies the text and a suggested name;
+  // the user picks the location in a native dialog, so no path ever comes from the renderer.
+  ipcMain.handle('dialog:save-text', async (_event, rawName: unknown, rawContent: unknown): Promise<{ ok: boolean; error?: string }> => {
+    if (typeof rawContent !== 'string' || rawContent.length > 2_000_000) return { ok: false, error: 'Nội dung không hợp lệ.' };
+    const name = (typeof rawName === 'string' ? rawName : 'mau').replace(/[^\w.-]+/g, '-').replace(/^\.+/, '').slice(0, 60) || 'mau';
+    const fileName = /\.(txt|csv)$/i.test(name) ? name : `${name}.txt`;
+    const options: SaveDialogOptions = {
+      title: t('Lưu file mẫu'),
+      defaultPath: path.join(app.getPath('downloads'), fileName),
+      filters: [{ name: 'Text', extensions: ['txt', 'csv'] }]
+    };
+    const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { ok: false };
+    // UTF-8 with BOM so Excel on Windows shows Vietnamese correctly.
+    await fs.promises.writeFile(result.filePath, `\uFEFF${rawContent}`, 'utf8');
+    return { ok: true };
+  });
+
   ipcMain.handle('dialog:select-audio', async (): Promise<AudioTrack[]> => {
     const options: OpenDialogOptions = {
-      title: 'Chọn file nhạc',
-      buttonLabel: 'Thêm vào playlist',
+      title: t('Chọn file nhạc'),
+      buttonLabel: t('Thêm vào playlist'),
       properties: ['openFile', 'multiSelections'],
       filters: [
         {
@@ -304,13 +386,41 @@ app.whenReady().then(async () => {
     });
   });
 
+  // AI question generation: keys stay in main (electron/ai.ts); only the controller window may use it.
+  const fromMainWindow = (event: Electron.IpcMainInvokeEvent) => event.sender === mainWindow?.webContents;
+  const refused = { ok: false as const, code: 'bad-request' as const };
+  ipcMain.handle('ai:status', (event) => (fromMainWindow(event) ? aiStatus() : null));
+  ipcMain.handle('ai:set-key', (event, provider: unknown, key: unknown) => (fromMainWindow(event) ? setAiKey(provider, key) : refused));
+  ipcMain.handle('ai:set-settings', (event, settings: unknown) => (fromMainWindow(event) ? setAiSettings(settings) : refused));
+  ipcMain.handle('ai:test', (event, provider: unknown) => (fromMainWindow(event) ? testAi(provider) : refused));
+  ipcMain.handle('ai:generate', (event, request: unknown) => (fromMainWindow(event) ? generateAi(request) : refused));
+
   ipcMain.handle('overlay:info', () => overlayInfo);
-  ipcMain.on('overlay:update', (_event, state: unknown) => publishOverlay(state));
+  ipcMain.on('overlay:update', (event, state: unknown) => {
+    // The controller's language rides on its overlay state; main only uses it
+    // for native dialog titles. Strictly 'vi' | 'en', and only from the main window.
+    const lang = state && typeof state === 'object' ? (state as { lang?: unknown }).lang : undefined;
+    if (event.sender === mainWindow?.webContents && isLanguage(lang)) setLanguage(lang);
+    publishOverlay(state);
+  });
+  ipcMain.handle('overlay:open-window', (_event, options: unknown) => {
+    if (!overlayInfo.url) return { ok: false, error: overlayInfo.error ?? 'Overlay server chưa chạy.' };
+    const origins = [new URL(overlayInfo.url).origin];
+    if (isDev && process.env.VITE_DEV_SERVER_URL) origins.push(new URL(process.env.VITE_DEV_SERVER_URL).origin);
+    return openOverlayWindow(overlayInfo.url, origins, options);
+  });
+  ipcMain.handle('overlay:close-window', () => {
+    closeOverlayWindow();
+    return true;
+  });
+  onOverlayWindowChange((open) => send<boolean>('overlay:window-changed', open));
+  onOverlayWindowAction((action) => send<OverlayWindowAction>('overlay:window-action', action));
 
   ipcMain.handle('tiktok:connect', (_event, username: string) => connectTikTok(username));
   ipcMain.handle('tiktok:disconnect', () => disconnectTikTok());
 
-  ipcMain.handle('tiktok:simulate', (_event, input: SimulatedEventInput = { type: 'chat' }) => {
+  ipcMain.handle('tiktok:simulate', (_event, raw: SimulatedEventInput | null) => {
+    const input: SimulatedEventInput = raw && typeof raw === 'object' ? raw : { type: 'chat' };
     const allowed: SimulatedEventInput['type'][] = ['chat', 'gift', 'like', 'follow', 'join'];
     const type = allowed.includes(input.type) ? input.type : 'chat';
     const fake = {
@@ -324,13 +434,16 @@ app.whenReady().then(async () => {
       likeCount: Number(input.count || 1),
       totalLikeCount: Number(input.total || input.count || 1)
     };
-    emitLiveEvent(type, fake);
+    emitLiveEvent(type, fake, true);
     return true;
   });
 
   overlayInfo = await startOverlayServer({
     distDir: path.join(__dirname, '..', 'dist'),
     devServerUrl: isDev ? process.env.VITE_DEV_SERVER_URL : undefined
+  }, (info) => {
+    overlayInfo = info;
+    send<OverlayInfo>('overlay:info-changed', info);
   });
 
   createWindow();
@@ -341,6 +454,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('will-quit', () => {
+  closeOverlayWindow();
   stopOverlayServer();
 });
 

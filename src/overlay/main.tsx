@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import '@fontsource-variable/baloo-2';
 import Overlay from './Overlay';
 import './overlay.css';
 

@@ -1,14 +1,38 @@
 import { emojiGame, sentenceGame, translateGame, unscrambleGame } from './games/answerGames';
+import { bombGame } from './games/bomb';
 import { bossGame } from './games/boss';
+import { castleSiegeGame } from './games/castleSiege';
+import { crosswordGame } from './games/crossword';
+import { duelGame } from './games/duel';
 import { englishWordChainGame } from './games/englishWordChain';
+import { estimateGame } from './games/estimate';
 import { fastestFingerGame } from './games/fastestFinger';
+import { goldenBellGame } from './games/goldenBell';
 import { guessNumberGame } from './games/guessNumber';
+import { balloonGame, plantGame, rocketGame, towerGame } from './games/growGames';
 import { hangmanGame } from './games/hangman';
+import { kingOfHillGame } from './games/kingOfHill';
+import {
+  chineseQuizGame,
+  chineseVocabGame,
+  hanziMemoryGame,
+  japaneseQuizGame,
+  japaneseVocabGame,
+  kanaMemoryGame,
+  kanaReadingGame,
+  pinyinReadingGame
+} from './games/languageGames';
+import { likeChallengeGame } from './games/likeChallenge';
+import { majorityGame } from './games/majority';
+import { memoryGame } from './games/memory';
 import { nameItGame } from './games/nameIt';
 import { englishQuizGame, quizGame } from './games/quiz';
 import { raceGame } from './games/race';
+import { rockPaperScissorsGame } from './games/rockPaperScissors';
 import { teamBattleGame } from './games/teamBattle';
-import { voteGame } from './games/vote';
+import { teamQuizGame } from './games/teamQuiz';
+import { trueFalseGame } from './games/trueFalse';
+import { emojiVietnameseGame, riddleGame } from './games/vietnameseGames';
 import { wheelGame } from './games/wheel';
 import { wordChainGame } from './games/wordChain';
 import type { GameConfig, GameDefinition, SettingField } from './types';
@@ -19,15 +43,35 @@ import type { GameConfig, GameDefinition, SettingField } from './types';
 export type AnyGame = GameDefinition<any, any>;
 
 export const GAMES: AnyGame[] = [
-  voteGame,
+  // Fun
+  quizGame,
+  goldenBellGame,
+  rockPaperScissorsGame,
+  majorityGame,
+  bombGame,
+  memoryGame,
+  likeChallengeGame,
+  emojiVietnameseGame,
+  riddleGame,
+  estimateGame,
   bossGame,
   wordChainGame,
-  quizGame,
   guessNumberGame,
   fastestFingerGame,
-  teamBattleGame,
   raceGame,
+  balloonGame,
+  plantGame,
+  rocketGame,
+  towerGame,
   wheelGame,
+  // Versus
+  castleSiegeGame,
+  teamQuizGame,
+  duelGame,
+  kingOfHillGame,
+  teamBattleGame,
+  // English
+  trueFalseGame,
   unscrambleGame,
   translateGame,
   emojiGame,
@@ -35,7 +79,18 @@ export const GAMES: AnyGame[] = [
   hangmanGame,
   nameItGame,
   englishQuizGame,
-  englishWordChainGame
+  englishWordChainGame,
+  crosswordGame,
+  // Japanese
+  kanaReadingGame,
+  japaneseVocabGame,
+  japaneseQuizGame,
+  kanaMemoryGame,
+  // Chinese
+  pinyinReadingGame,
+  chineseVocabGame,
+  chineseQuizGame,
+  hanziMemoryGame
 ];
 
 export function getGame(id: string | null): AnyGame | null {

@@ -1,4 +1,5 @@
-import { chatTest, view, type GameDefinition } from '../types';
+import { t } from '../../shared/i18n';
+import { chatTest, commandArgument, view, type GameDefinition } from '../types';
 
 export interface GuessRound {
   max: number;
@@ -15,7 +16,13 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
   id: 'guessNumber',
   title: 'Đoán số 🔢',
   category: 'fun',
+  accent: '#3b82f6',
   howTo: 'Comment một số. Màn hình báo cao hơn / thấp hơn và thu hẹp khoảng. Ai đoán trúng trước được điểm.',
+  commands: [
+    { usage: '42', description: 'Đoán một số' },
+    { usage: '!guess 42', description: 'Cách viết khác' }
+  ],
+  aliases: ['doanso', 'guess'],
   defaultConfig: { max: 100, seconds: 120, points: 5 },
   settings: [
     { key: 'max', label: 'Số lớn nhất', type: 'number', min: 10, max: 10_000 },
@@ -33,8 +40,8 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
 
   handle(state, input) {
     if (input.kind !== 'chat') return null;
-    const text = input.text.trim();
-    if (!/^\d{1,6}$/.test(text)) return null;
+    const text = commandArgument(input.text, ['guess', 'doan']);
+    if (text === null || !/^\d{1,6}$/.test(text)) return null;
 
     const value = Number(text);
     if (state.winner || value < state.low || value > state.high) return { state, consumed: true };
@@ -50,7 +57,10 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
     }
     return {
       consumed: true,
-      message: `${input.nickname} đoán ${value} → ${hint === 'up' ? 'cao hơn ⬆' : 'thấp hơn ⬇'}`,
+      message: hint === 'up'
+        ? t('{name} đoán {value} → cao hơn ⬆', { name: input.nickname, value })
+        : t('{name} đoán {value} → thấp hơn ⬇', { name: input.nickname, value }),
+      effects: [{ kind: 'score', text: `${value} ${hint === 'up' ? '⬆' : '⬇'}`, user: input.nickname }],
       state: {
         ...state,
         guesses,
@@ -64,29 +74,30 @@ export const guessNumberGame: GameDefinition<GuessRound, GuessConfig> = {
     if (state.winner) {
       return {
         state,
-        message: `🎉 ${state.winner.nickname} đoán trúng số ${state.secret}!`,
+        message: t('🎉 {name} đoán trúng số {n}!', { name: state.winner.nickname, n: state.secret }),
         awards: [{ ...state.winner, points: config.points }]
       };
     }
-    return { state, message: `Hết giờ! Số bí mật là ${state.secret}.`, awards: [] };
+    return { state, message: t('Hết giờ! Số bí mật là {n}.', { n: state.secret }), awards: [] };
   },
 
   testActions(state) {
     const middle = Math.floor((state.low + state.high) / 2);
     return [
-      chatTest(`Đoán ${middle}`, String(middle), 3),
-      chatTest(`Đoán ${state.low}`, String(state.low)),
-      chatTest('Đoán trúng', String(state.secret), 0.2)
+      chatTest(t('Đoán {n}', { n: middle }), String(middle), 3),
+      chatTest(t('Đoán {n}', { n: state.low }), String(state.low)),
+      chatTest(t('Đoán trúng'), String(state.secret), 0.2)
     ];
   },
 
   view(state) {
     return view({
       headline: state.winner ? String(state.secret) : `${state.low} – ${state.high}`,
-      hint: `Đoán số bí mật từ 1 đến ${state.max}`,
+      hint: t('Đoán số bí mật từ 1 đến {max}', { max: state.max }),
       rows: [...state.guesses].reverse().map((guess) => ({
         label: `${guess.nickname}: ${guess.value}`,
-        value: guess.hint === 'hit' ? '🎯 Trúng' : guess.hint === 'up' ? '⬆ Cao hơn' : '⬇ Thấp hơn',
+        avatar: guess.nickname,
+        value: guess.hint === 'hit' ? t('🎯 Trúng') : guess.hint === 'up' ? t('⬆ Cao hơn') : t('⬇ Thấp hơn'),
         highlight: guess.hint === 'hit'
       }))
     });

@@ -1,3 +1,6 @@
+import { t } from '../shared/i18n';
+
+/** `label` / `hint`: Vietnamese source texts or already translated ones; translated here. */
 interface ToggleProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -15,8 +18,8 @@ export default function Toggle({ checked, onChange, label, hint }: ToggleProps) 
       />
       <span className="toggle-ui" aria-hidden="true" />
       <span className="toggle-copy">
-        <strong>{label}</strong>
-        {hint ? <small>{hint}</small> : null}
+        <strong>{t(label)}</strong>
+        {hint ? <small>{t(hint)}</small> : null}
       </span>
     </label>
   );
