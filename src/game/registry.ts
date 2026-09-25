@@ -9,6 +9,7 @@ import { estimateGame } from './games/estimate';
 import { fastestFingerGame } from './games/fastestFinger';
 import { goldenBellGame } from './games/goldenBell';
 import { guessNumberGame } from './games/guessNumber';
+import { balloonGame, plantGame, rocketGame, towerGame } from './games/growGames';
 import { hangmanGame } from './games/hangman';
 import { kingOfHillGame } from './games/kingOfHill';
 import {
@@ -58,6 +59,10 @@ export const GAMES: AnyGame[] = [
   guessNumberGame,
   fastestFingerGame,
   raceGame,
+  balloonGame,
+  plantGame,
+  rocketGame,
+  towerGame,
   wheelGame,
   // Versus
   castleSiegeGame,

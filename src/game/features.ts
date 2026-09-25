@@ -1,3 +1,5 @@
+import { isMusicChoice, type MusicChoice } from './music';
+
 /** Always-on LIVE features that run beside (not instead of) games. */
 export interface LiveFeatures {
   fanEnabled: boolean;
@@ -13,6 +15,14 @@ export interface LiveFeatures {
   chatCommandsEnabled: boolean;
   /** Synthesized game sounds (start, hits, correct, win, countdown ticks). */
   gameSounds: boolean;
+  /** Background music composed in code while games / the game list are on. */
+  gameMusic: boolean;
+  /** 0–100. */
+  musicVolume: number;
+  /** "auto" (each game's mood) or one theme for every game. */
+  musicTheme: MusicChoice;
+  /** While the playlist plays: the game music stops (`yield`) or plays with the playlist turned down (`duck`). */
+  musicWithPlaylist: 'yield' | 'duck';
   /** Extra usernames allowed to use host commands (the connected streamer always can). */
   moderators: string;
 }
@@ -29,6 +39,10 @@ export const DEFAULT_FEATURES: LiveFeatures = {
   welcomeSound: true,
   chatCommandsEnabled: true,
   gameSounds: true,
+  gameMusic: true,
+  musicVolume: 40,
+  musicTheme: 'auto',
+  musicWithPlaylist: 'yield',
   moderators: ''
 };
 
@@ -36,7 +50,8 @@ const NUMBER_LIMITS: Partial<Record<keyof LiveFeatures, [number, number]>> = {
   fanChatPoints: [0, 100],
   fanChatCooldownSeconds: [0, 3600],
   fanLikesPerPoint: [1, 10_000],
-  fanGiftPoints: [0, 10_000]
+  fanGiftPoints: [0, 10_000],
+  musicVolume: [0, 100]
 };
 
 export function normalizeFeatures(raw: Partial<Record<keyof LiveFeatures, unknown>> | undefined): LiveFeatures {
@@ -54,6 +69,8 @@ export function normalizeFeatures(raw: Partial<Record<keyof LiveFeatures, unknow
       (result as Record<string, unknown>)[key] = Number.isFinite(numeric) ? Math.min(max, Math.max(min, Math.round(numeric))) : fallback;
     }
   }
+  if (!isMusicChoice(result.musicTheme)) result.musicTheme = DEFAULT_FEATURES.musicTheme;
+  if (result.musicWithPlaylist !== 'duck') result.musicWithPlaylist = 'yield';
   return result;
 }
 

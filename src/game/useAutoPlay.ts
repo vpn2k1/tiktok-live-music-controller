@@ -5,12 +5,13 @@ import type { GamePhase, LiveEvent } from '../shared/types';
 import {
   activeGroup,
   addGifts,
+  applyHostAction,
   createLoop,
   createSession,
   EMPTY_GIFT_SWITCH,
   giftMatches,
+  hostStep,
   LIVE_WARNING_MS,
-  loopStep,
   nextGameOrder,
   normalizeAutoPlay,
   rotation,
@@ -360,49 +361,44 @@ export function useAutoPlay(options: AutoPlayOptions) {
       }
 
       const current = loopRef.current;
-      // Follow the host: a game started any other way becomes the one being played.
-      if (running && game.kind && game.kind !== current?.gameId) {
-        setLoop(createLoop(game.kind, now));
-        return;
-      }
-      if (!current) {
-        const list = lobbyRef.current;
-        if (!auto || running) return;
-        if (list) {
-          // Viewers are choosing; the auto session makes sure the vote ends.
-          if (list.endsAt == null) setLobby(startLobbyTimer(list, now, settingsRef.current.lobbySeconds));
-          return;
-        }
-        // Auto session with nothing on: the list, or the selected game first.
-        if (settingsRef.current.lobbyEnabled) {
+      const list = lobbyRef.current;
+      const action = hostStep(current, settingsRef.current, {
+        running,
+        kind: game.kind,
+        auto: auto != null,
+        list: list ? { timed: list.endsAt != null } : null
+      }, now);
+      switch (action.type) {
+        case 'adopt':
+        case 'roundStarted':
+        case 'roundEnded':
+          setLoop(applyHostAction(current, action, now));
+          break;
+        case 'timeList':
+          if (list) setLobby(startLobbyTimer(list, now, settingsRef.current.lobbySeconds));
+          break;
+        case 'openList':
           showLobby(true);
-          return;
+          break;
+        case 'startFirst': {
+          const group = rotation(settingsRef.current, GAME_IDS);
+          const first = group.includes(selectedId) ? [selectedId, ...group.filter((id) => id !== selectedId)] : group;
+          if (!startFirst(first)) stop(t('Không game nào trong danh sách bắt đầu được: đã tắt tự động'));
+          break;
         }
-        const group = rotation(settingsRef.current, GAME_IDS);
-        const first = group.includes(selectedId) ? [selectedId, ...group.filter((id) => id !== selectedId)] : group;
-        if (!startFirst(first)) stop(t('Không game nào trong danh sách bắt đầu được: đã tắt tự động'));
-        return;
-      }
-
-      if (running) {
-        if (current.idleSince != null) patchLoop({ idleSince: null });
-        return;
-      }
-      if (current.idleSince == null) {
-        // A round just ended: its result stays on screen for the round gap.
-        patchLoop({ idleSince: now, roundsPlayed: current.roundsPlayed + 1 });
-        return;
-      }
-      const step = loopStep(current, settingsRef.current, false, now);
-      if (step === 'switch') {
-        goNext(current.gameId);
-      } else if (step === 'restart') {
-        if (start(current.gameId)) patchLoop({ idleSince: null });
-        else goNext(current.gameId);
+        case 'switch':
+          goNext(action.gameId);
+          break;
+        case 'restart':
+          if (start(action.gameId)) setLoop(applyHostAction(loopRef.current, { type: 'roundStarted' }, now));
+          else goNext(action.gameId);
+          break;
+        case 'none':
+          break;
       }
     }, TICK_MS);
     return () => clearInterval(timer);
-  }, [active, goNext, patchLoop, setLobby, setLoop, setSession, showLobby, startFirst, stop]);
+  }, [active, goNext, setLobby, setLoop, setSession, showLobby, startFirst, stop]);
 
   // Optionally start with the LIVE.
   const wasConnected = useRef(options.liveConnected);
@@ -477,7 +473,7 @@ export function useAutoPlay(options: AutoPlayOptions) {
     // Nothing to switch, or a switch is already on its way: the gift doesn't count.
     const playing = loopRef.current != null || optionsRef.current.getGame().phase === 'running';
     if (!playing || loopRef.current?.switchPending) return { consumed: false };
-    const result = addGifts(giftRef.current, current, Number(event.count) || 1, now);
+    const result = addGifts(giftRef.current, current, Number(event.count) || 1, now, loopRef.current?.since ?? optionsRef.current.getGame().startedAt);
     setGift(result.state);
     if (result.switch) requestSwitch(t('🎁 {nickname} tặng {gift}: đổi game!', { nickname: who, gift: current.giftName }));
     return { consumed: false };

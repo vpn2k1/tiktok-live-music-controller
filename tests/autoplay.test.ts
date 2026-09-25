@@ -89,17 +89,19 @@ test('giftMatches is exact, case-insensitive and respects the toggle', () => {
   assert.ok(!giftMatches(settings({ giftSwitchEnabled: false }), 'Rose'));
 });
 
-test('addGifts sums gifts to the threshold, then ignores gifts during the cooldown', () => {
+test('addGifts sums gifts to the threshold, ignoring gifts in a game\'s first seconds', () => {
   const s = settings({ giftCount: 5, giftCooldownSeconds: 30 });
-  let r = addGifts(EMPTY_GIFT_SWITCH, s, 3, 0);
+  let r = addGifts(EMPTY_GIFT_SWITCH, s, 3, 60_000, 0);
   assert.deepEqual(r, { state: { progress: 3, lastSwitchAt: null }, switch: false });
-  r = addGifts(r.state, s, 2, 1000);
-  assert.deepEqual(r, { state: { progress: 0, lastSwitchAt: 1000 }, switch: true });
-  r = addGifts(r.state, s, 99, 20_000);
+  r = addGifts(r.state, s, 2, 61_000, 0);
+  assert.deepEqual(r, { state: { progress: 0, lastSwitchAt: 61_000 }, switch: true });
+  // The next game started at 100 s.
+  r = addGifts(r.state, s, 99, 120_000, 100_000);
   assert.equal(r.switch, false);
   assert.equal(r.state.progress, 0);
-  r = addGifts(r.state, s, 99, 31_000);
+  r = addGifts(r.state, s, 99, 131_000, 100_000);
   assert.equal(r.switch, true);
+  assert.equal(addGifts(EMPTY_GIFT_SWITCH, s, 5, 1000, null).switch, true, 'no game on: no cooldown');
 });
 
 test('games play on forever by default; old settings migrate to it', () => {

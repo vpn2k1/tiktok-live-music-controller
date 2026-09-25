@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
-import type { OverlayCards, OverlayCrossword, OverlayMenu, OverlayRace, OverlayRow, OverlayTeam, OverlayWheel } from '../shared/types';
+import type { OverlayCards, OverlayCrossword, OverlayGrow, OverlayMenu, OverlayRace, OverlayRow, OverlayTeam, OverlayWheel } from '../shared/types';
 import { t } from '../shared/i18n';
 
 /** Stable, bright color for a viewer name (no network avatars needed). */
@@ -173,6 +173,82 @@ export function RaceTrack({ race }: { race: OverlayRace }) {
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Plant stages from seed to tree; the goal adds fruit. */
+const PLANT_STAGES = ['🌰', '🌱', '🌿', '🪴', '🌳'];
+/** Bricks drawn per tower at most (tall goals draw thinner bricks). */
+const MAX_BRICKS = 30;
+
+/** The picture of one racer in a growing race, `fraction` = steps / goal. */
+function GrowArt({ kind, item, fraction, goal }: { kind: OverlayGrow['kind']; item: OverlayGrow['items'][number]; fraction: number; goal: number }) {
+  const done = fraction >= 1;
+  if (kind === 'balloon') {
+    return (
+      <span className={`ov-balloon ${done ? 'popped' : ''}`} style={{ '--s': 0.34 + 0.66 * fraction } as CSSProperties}>
+        <span className="ov-balloon-body"><Avatar name={item.label} size={30} /></span>
+        <span className="ov-balloon-string" aria-hidden="true" />
+        {done ? <span className="ov-grow-burst" aria-hidden="true">💥</span> : null}
+      </span>
+    );
+  }
+  if (kind === 'plant') {
+    const stage = PLANT_STAGES[Math.min(PLANT_STAGES.length - 1, Math.floor(fraction * (PLANT_STAGES.length - 1)))] ?? '🌰';
+    return (
+      <span className="ov-plant" style={{ '--s': 0.45 + 0.55 * fraction } as CSSProperties}>
+        <span className="ov-plant-leaf">{stage}{done ? <span className="ov-plant-fruit" aria-hidden="true">🍎</span> : null}</span>
+        <span className="ov-plant-pot" aria-hidden="true" />
+      </span>
+    );
+  }
+  if (kind === 'rocket') {
+    return (
+      <span className="ov-rocket-track">
+        <span className="ov-rocket" style={{ bottom: `calc(${fraction * 100}% - ${fraction * 34}px)` }}>
+          <span className="ov-rocket-icon">🚀</span>
+          {item.steps > 0 && !done ? <span className="ov-rocket-flame" aria-hidden="true">🔥</span> : null}
+        </span>
+      </span>
+    );
+  }
+  const bricks = Math.min(MAX_BRICKS, Math.round(fraction * Math.min(goal, MAX_BRICKS)));
+  return (
+    <span className="ov-tower-track">
+      <span className="ov-tower" style={{ '--rows': Math.min(goal, MAX_BRICKS) } as CSSProperties}>
+        {Array.from({ length: bricks }, (_, index) => <span key={index} className="ov-brick" />)}
+      </span>
+      {done ? <span className="ov-tower-flag" aria-hidden="true">🚩</span> : null}
+    </span>
+  );
+}
+
+/** Growing question race: one column per front runner, the goal drawn above them. */
+export function GrowStage({ grow }: { grow: OverlayGrow }) {
+  if (!grow.items.length) return <p className="ov-hint big">{grow.emptyHint ?? ''}</p>;
+  const goal = Math.max(1, grow.goal);
+  return (
+    <div className={`ov-grow ${grow.kind}`}>
+      {grow.kind === 'rocket' ? <span className="ov-grow-goal" aria-hidden="true">🌕</span> : null}
+      {grow.kind === 'tower' ? <span className="ov-grow-goal" aria-hidden="true">☁️☁️☁️</span> : null}
+      <div className="ov-grow-row">
+        {grow.items.map((item, index) => {
+          const fraction = Math.min(1, Math.max(0, item.steps / goal));
+          return (
+            <div
+              key={`${index}-${item.label}`}
+              className={`ov-grow-item ${index === 0 && item.steps > 0 ? 'leader' : ''}`}
+              style={{ '--c': nameColor(item.label) } as CSSProperties}
+            >
+              {index === 0 && item.steps > 0 ? <span className="ov-grow-crown" aria-hidden="true">👑</span> : null}
+              <span className="ov-grow-art"><GrowArt kind={grow.kind} item={item} fraction={fraction} goal={goal} /></span>
+              <span className="ov-grow-name">{grow.kind === 'balloon' ? null : <Avatar name={item.label} size={18} />}{item.label}</span>
+              {item.value ? <span className="ov-grow-value">{item.value}</span> : null}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

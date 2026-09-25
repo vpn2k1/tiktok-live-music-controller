@@ -115,6 +115,58 @@ export const EN_GAMES3: Record<string, string> = {
   'Chưa ai đúng': 'Nobody got it right',
   'Đúng = +1 bước · về đích: {goal} bước': 'Correct = +1 step · finish: {goal} steps',
 
+  // Growing question races (growGames.ts)
+  'Thổi bóng bay 🎈': 'Balloon pop 🎈',
+  'Mỗi câu hỏi comment a, b, c hoặc d. Hết giờ câu hỏi, ai trả lời đúng được thổi bóng to thêm (ai đúng trước thổi trước). Bóng ai to hết cỡ và nổ đầu tiên thì thắng và được chúc mừng trên màn hình; top 3 được thưởng điểm.':
+    'Comment a, b, c or d for each question. When it closes, everyone who answered correctly blows their balloon bigger (first correct answer first). The first balloon to reach full size and pop wins and is celebrated on screen; the top 3 earn bonus points.',
+  'Trả lời câu hỏi: đúng = thổi bóng to thêm (chỉ tính lần đầu)': 'Answer the question: correct = a bigger balloon (first answer only)',
+  'Số lần thổi để bóng nổ': 'Puffs until the balloon pops',
+  'Mỗi câu trả lời đúng = 1 lần thổi.': 'Each correct answer = 1 puff.',
+  '{steps}/{goal} lần thổi': '{steps}/{goal} puffs',
+  'Đúng = thổi 1 hơi · bóng nổ sau {goal} hơi': 'Correct = 1 puff · pops after {goal} puffs',
+  '🎈 {n} người đúng: bóng to thêm!': '🎈 {n} correct: balloons grow!',
+  '🎈 Trả lời đúng để bắt đầu thổi bóng!': '🎈 Answer correctly to start blowing!',
+  '💥 Bóng của {name} to nhất và nổ tung!': '💥 {name}’s balloon got the biggest and popped!',
+  '🎈 {name} có quả bóng to nhất!': '🎈 {name} has the biggest balloon!',
+
+  'Trồng cây 🌱': 'Grow a tree 🌱',
+  'Mỗi câu hỏi comment a, b, c hoặc d. Hết giờ câu hỏi, ai trả lời đúng được tưới cây lớn thêm (ai đúng trước tưới trước): hạt → mầm → cây con → cây to. Cây ai ra quả đầu tiên thì thắng và được chúc mừng trên màn hình; top 3 được thưởng điểm.':
+    'Comment a, b, c or d for each question. When it closes, everyone who answered correctly waters their plant so it grows (first correct answer first): seed → sprout → sapling → tree. The first tree to bear fruit wins and is celebrated on screen; the top 3 earn bonus points.',
+  'Trả lời câu hỏi: đúng = tưới cây lớn thêm (chỉ tính lần đầu)': 'Answer the question: correct = water your plant (first answer only)',
+  'Số lần tưới để cây ra quả': 'Waterings until it bears fruit',
+  'Mỗi câu trả lời đúng = 1 lần tưới.': 'Each correct answer = 1 watering.',
+  '{steps}/{goal} lần tưới': '{steps}/{goal} waterings',
+  'Đúng = tưới 1 lần · cây ra quả sau {goal} lần': 'Correct = 1 watering · fruit after {goal}',
+  '💧 {n} người đúng: cây lớn thêm!': '💧 {n} correct: plants grow!',
+  '🌰 Trả lời đúng để gieo hạt!': '🌰 Answer correctly to plant a seed!',
+  '🍎 Cây của {name} ra quả đầu tiên!': '🍎 {name}’s tree bore fruit first!',
+  '🌳 {name} có cây cao nhất!': '🌳 {name} has the tallest tree!',
+
+  'Tên lửa lên Mặt Trăng 🚀': 'Rocket to the Moon 🚀',
+  'Mỗi câu hỏi comment a, b, c hoặc d. Hết giờ câu hỏi, ai trả lời đúng thì tên lửa bay cao thêm 1 tầng (ai đúng trước bay trước). Tên lửa ai chạm Mặt Trăng đầu tiên thì thắng và được chúc mừng trên màn hình; top 3 được thưởng điểm.':
+    'Comment a, b, c or d for each question. When it closes, everyone who answered correctly flies their rocket one level higher (first correct answer first). The first rocket to reach the Moon wins and is celebrated on screen; the top 3 earn bonus points.',
+  'Trả lời câu hỏi: đúng = tên lửa bay cao thêm (chỉ tính lần đầu)': 'Answer the question: correct = your rocket climbs (first answer only)',
+  'Số tầng bay lên Mặt Trăng': 'Levels to the Moon',
+  'Mỗi câu trả lời đúng = bay lên 1 tầng.': 'Each correct answer = 1 level up.',
+  '{steps}/{goal} tầng': '{steps}/{goal} levels',
+  'Đúng = bay lên 1 tầng · Mặt Trăng ở tầng {goal}': 'Correct = 1 level up · the Moon is at level {goal}',
+  '🚀 {n} người đúng: bay lên 1 tầng!': '🚀 {n} correct: 1 level up!',
+  '🚀 Trả lời đúng để phóng tên lửa!': '🚀 Answer correctly to launch!',
+  '🌕 {name} đáp xuống Mặt Trăng đầu tiên!': '🌕 {name} landed on the Moon first!',
+  '🚀 {name} bay cao nhất!': '🚀 {name} flew the highest!',
+
+  'Xây tháp 🏰': 'Build a tower 🏰',
+  'Mỗi câu hỏi comment a, b, c hoặc d. Hết giờ câu hỏi, ai trả lời đúng được xây thêm 1 viên gạch (ai đúng trước xây trước). Tháp ai chạm mây đầu tiên thì thắng và được chúc mừng trên màn hình; top 3 được thưởng điểm.':
+    'Comment a, b, c or d for each question. When it closes, everyone who answered correctly adds a brick to their tower (first correct answer first). The first tower to touch the clouds wins and is celebrated on screen; the top 3 earn bonus points.',
+  'Trả lời câu hỏi: đúng = thêm 1 viên gạch (chỉ tính lần đầu)': 'Answer the question: correct = +1 brick (first answer only)',
+  'Số tầng để chạm mây': 'Bricks to reach the clouds',
+  'Mỗi câu trả lời đúng = 1 viên gạch.': 'Each correct answer = 1 brick.',
+  'Đúng = +1 viên gạch · chạm mây ở tầng {goal}': 'Correct = +1 brick · clouds at level {goal}',
+  '🧱 {n} người đúng: tháp cao thêm!': '🧱 {n} correct: towers grow!',
+  '🧱 Trả lời đúng để đặt viên gạch đầu tiên!': '🧱 Answer correctly to lay the first brick!',
+  '☁️ Tháp của {name} chạm mây đầu tiên!': '☁️ {name}’s tower touched the clouds first!',
+  '🏰 {name} có tháp cao nhất!': '🏰 {name} has the tallest tower!',
+
   // Rock Paper Scissors (rockPaperScissors.ts)
   'Kéo Búa Bao ✊': 'Rock Paper Scissors ✊',
   'Búa': 'Rock',

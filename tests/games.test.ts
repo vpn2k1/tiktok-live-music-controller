@@ -61,8 +61,8 @@ test('vietnamese words', () => {
 });
 
 test('registry and config normalization', () => {
-  assert.equal(GAMES.length, 39);
-  assert.equal(new Set(GAMES.map((g) => g.id)).size, 39);
+  assert.equal(GAMES.length, 43);
+  assert.equal(new Set(GAMES.map((g) => g.id)).size, 43);
   // Every `!start <name>` name must point to exactly one game.
   const names = GAMES.flatMap((g) => gameNames(g).map((name) => [name, g.id] as const));
   for (const [name, id] of names) assert.deepEqual([...new Set(names.filter(([other]) => other === name).map(([, owner]) => owner))], [id], `name "${name}" is shared`);
@@ -525,4 +525,36 @@ test('effects queue and game effects', async () => {
   const un = play('unscramble', { bank: 'apple | táo' }, [chat('a', 'apple')]);
   assert.equal(un.results[0].effects?.[0]?.kind, 'correct');
   for (const g of GAMES) assert.ok(g.accent, `${g.id} has no accent`);
+});
+
+test('growing races: balloon / plant / rocket / tower share the race rules with their own picture', () => {
+  const kinds: Record<string, [string, RegExp]> = { thoiBong: ['balloon', /lần thổi/], trongCay: ['plant', /lần tưới/], tenLua: ['rocket', /tầng/], xayThap: ['tower', /tầng/] };
+  for (const [id, [kind, unit]] of Object.entries(kinds)) {
+    const g = game(id);
+    assert.ok(!g.settings.some((field: any) => field.key === 'icon'), `${id}: no duck picker`);
+    const c = normalizeConfig(g, { questions: 'Q | x | y | A', goal: 2 } as any);
+    let state = g.start(c, startCtx()).state;
+    assert.equal(g.view(state, c).grow.kind, kind);
+    assert.deepEqual(g.view(state, c).grow.items, []);
+    assert.equal(g.view(state, c).race, null, `${id}: no duck lanes`);
+    for (let round = 0; round < 2; round += 1) {
+      for (const user of ['b', 'a']) {
+        const r = g.handle(state, chat(user, 'a'), c, ctx(2000));
+        r.commit();
+        state = r.state;
+      }
+      const closed = step(g, state, c, 20_000 + round * 10_000);
+      state = closed.state;
+      if (round === 0) {
+        assert.deepEqual(g.view(state, c).grow.items.map((item: any) => [item.label, item.steps, item.value]), [['B', 1, '1/2'], ['A', 1, '1/2']]);
+        state = step(g, state, c, 23_000).state;
+      } else {
+        assert.equal(closed.finish, true);
+      }
+    }
+    const done = g.finish(state, c, ctx());
+    assert.equal(done.state.winner.user, 'b', `${id}: first correct answer wins`);
+    assert.match(done.effects[0].podium[0].value, unit);
+    assert.equal(done.effects[0].podium.length, 1, `${id}: winner spotlight`);
+  }
 });

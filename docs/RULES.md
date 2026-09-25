@@ -44,6 +44,10 @@ Each game is a pure plugin in `src/game/games/` (see `src/game/types.ts`), liste
 | Ai nhanh tay | chat | first exact match (case/space-insensitive, tone-sensitive) of the shown word wins | `points` to the winner |
 | Team battle | chat `A`/`B`, like, gift | join once (no switching); members' likes +1, gifts +`giftPoints`; loser penalty text | +1 contributor, +2 winning team |
 | Đua vịt | `a`–`d` answers | question race: a question every `seconds` (built-in bank or own A–D lines); when it closes, every correct answer moves +1 step in answer order (the first correct answer moves first, so it wins a tie at the line); first to `goal` steps (default 7) wins and gets the winner spotlight; after `maxQuestions` the leader wins | +10 per step; top 3: +100/+50/+25 |
+| 🎈 Thổi bóng bay (`thoiBong`) | `a`–`d` answers | same question race as Đua vịt (`createQuestionRace` in `race.ts`); each correct answer puffs the viewer's balloon (avatar inside) bigger; the first balloon to reach `goal` puffs (default 6) pops and wins | +10 per step; top 3: +100/+50/+25 |
+| 🌱 Trồng cây (`trongCay`) | `a`–`d` answers | question race; each correct answer waters the plant one stage (🌰 → 🌱 → 🌿 → 🪴 → 🌳); first tree to bear fruit 🍎 (`goal`, default 6) wins | same |
+| 🚀 Tên lửa lên Mặt Trăng (`tenLua`) | `a`–`d` answers | question race on vertical tracks; each correct answer = 1 level up; first rocket to the Moon 🌕 (`goal`, default 8) wins | same |
+| 🏰 Xây tháp (`xayThap`) | `a`–`d` answers | question race; each correct answer adds a brick in the viewer's color; first tower to touch the clouds ☁️ (`goal`, default 8) wins | same |
 | Vòng quay thử thách | gift (any or named) | each gift unit queues a spin (max 20); wheel lands on a random challenge for the streamer; no timer | +1 per spin |
 
 ## Newer fun games
@@ -60,7 +64,7 @@ All of them are pure modules in `src/game/games/`; Vietnamese content lives in `
 | 🖼️ Đuổi hình bắt chữ (`duoiHinh`) | the Vietnamese word (accents/spaces optional) | *series*; big emoji puzzle + hint + one dot per letter | speed points |
 | 🧠 Câu đố vui (`caudo`) | the answer (accents/spaces optional, `/` alternatives) | *series*; folk riddles and brain teasers | speed points |
 | 💣 Gỡ bom (`goBom`) | a wire number (`3`, `!cut 3`) | `wires` numbered wires, one is the bomb; one cut per viewer; cutting every safe wire defuses it, the bomb wire ends the round with a BOOM | safe cut: `maxPoints` × (1 + 0.5 per earlier safe cut); defuse bonus `defusePoints` split among cutters |
-| 🃏 Lật hình ghép cặp (`latHinh`) | two numbers (`3 8`, `3-8`, `!lat 3 8`) | `pairs` emoji pairs face down; a pair stays open, a miss shows for 1.8 s then flips back; ends when all pairs are found | `points` per pair |
+| 🃏 Lật hình ghép cặp (`latHinh`) | two numbers (`3 8`, `3-8`, `!lat 3 8`) | `pairs` emoji pairs face down; a pair stays open, a miss shows for 1.8 s then flips back; every viewer's flip counts at once (up to 4 misses show together, a card in one miss at a time; a correct pair is never blocked by someone else's miss), so a busy room can open every pair in one batch; ends when all pairs are found | `points` per pair |
 | ❤️ Thử thách tim (`thuThachTim`) | likes, gifts (= `giftLikes` likes each) | the room fills a heart meter; each milestone (`số tim \| thử thách`) unlocks a streamer challenge; the last milestone ends the round | every liker: likes ÷ `likesPerPoint` (top 20) |
 
 The "Vote bài tiếp theo" game was removed (music stays controllable by the music rules).
@@ -160,11 +164,15 @@ Game commands (only while that game runs): `!vote 2`, `!hit` (boss, `chatDamage`
 ## Background features (Tính năng nền)
 
 - **Bảng xếp hạng fan** (off by default): comment +`fanChatPoints` at most once per `fanChatCooldownSeconds`; every `fanLikesPerPoint` likes = +1 (remainder carried); each gift unit +`fanGiftPoints`.
+- **Nhạc nền game** (on by default, "🔊 Âm thanh & nhạc nền game" in Cài đặt chung): music composed in code — no audio files, so no copyrighted songs for TikTok to mute. Pure loops in `src/shared/bgm.ts` (chords, bass, drums, lead per theme), played by `src/hooks/useGameMusic.ts` with Web Audio in the app (OBS captures app audio); what plays when is `musicCue` in `src/game/music.ts`:
+  - Themes: 🎉 Vui nhộn (fun games), ❓ Hồi hộp (quiz, golden bell, bomb, estimate, guess number, fastest finger, crossword, English quiz), ⚔️ Đối kháng (versus games, boss), 🎧 Nhẹ nhàng (English / Japanese / Chinese games), 🗳 Chờ chọn game (the game list). "Kiểu nhạc" = match each game (default) or one theme for all.
+  - A running round plays its game's theme, 12 % faster with busier drums in the last 30 % of a timer (max 10 s; answer reveals never count); a finished round keeps it at 35 % under the winner's fanfare; the game list plays the lobby theme; nothing on = silence. Theme changes crossfade.
+  - With the playlist playing: the game music stops (default) or plays with the playlist at 30 % volume. Volume 0–100 (default 40). "Nghe thử" plays a theme for 10 s.
 - **Chào người mới** (on by default, follows only): overlay toast + short synthesized chime for follows; optional joins. Queue max 5; joins are dropped first so big rooms don't flood the overlay.
 
 ## Tự động chuyển game (auto host)
 
-Panel "🎮 Chọn & chuyển game" in the Game tab (`src/game/autoplay.ts` pure logic, `src/game/useAutoPlay.ts` timers). Settings persist in `localStorage` (`autoplay-settings`, `version` 2).
+Panel "🎮 Chọn & chuyển game" in the Game tab (`src/game/autoplay.ts` pure logic — `hostStep` decides each tick, tested in `tests/host.test.ts` — and `src/game/useAutoPlay.ts` timers). Settings persist in `localStorage` (`autoplay-settings`, `version` 2).
 
 ### Endless play (play loop)
 
@@ -185,7 +193,7 @@ Panel "🎮 Chọn & chuyển game" in the Game tab (`src/game/autoplay.ts` pure
 ### Gift → switch game
 
 - Exact gift name (case-insensitive, default `Rose`) summed across viewers until `giftCount` (default 5), then a switch is requested: the round finishes normally, the winners are celebrated, then the game list opens (or the next rotation game). Works with or without the auto session. Gifts after the request are not counted.
-- After a switch, matching gifts are ignored for `giftCooldownSeconds` (default 30) so the new game gets played.
+- Matching gifts are ignored during the first `giftCooldownSeconds` (default 30) of each game, counted from the game's start (not from the request, since the switch waits for the round to end), so a new game always gets played.
 - The running game still sees the gift first (e.g. boss damage, fan points). The overlay shows a "🎁 Tặng N <gift> · đổi game" chip while it's on. The reward is only a game change, never a prize.
 
 ### End-of-round celebration

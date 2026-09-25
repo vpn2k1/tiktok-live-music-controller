@@ -143,6 +143,20 @@ export interface OverlayRace {
   emptyHint?: string;
 }
 
+/**
+ * Question-race picture that grows with each correct answer: a balloon that
+ * inflates, a plant that grows, a rocket flying to the moon, a tower of bricks.
+ */
+export interface OverlayGrow {
+  kind: 'balloon' | 'plant' | 'rocket' | 'tower';
+  /** Steps to win. */
+  goal: number;
+  /** Front runners, leader first: `label` = viewer name (for the avatar), `steps` 0..goal. */
+  items: { label: string; steps: number; value?: string }[];
+  /** Shown while nobody has moved yet. */
+  emptyHint?: string;
+}
+
 /** Visual treatment hints a game can ask the overlay for. */
 export interface OverlayStyle {
   /** `tiles`: one letter per tile (word games); `boss`: big animated character. */
@@ -223,6 +237,7 @@ export interface OverlayGameView {
   wheel: OverlayWheel | null;
   crossword?: OverlayCrossword | null;
   cards?: OverlayCards | null;
+  grow?: OverlayGrow | null;
   style?: OverlayStyle;
 }
 

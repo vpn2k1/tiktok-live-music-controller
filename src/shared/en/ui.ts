@@ -116,7 +116,7 @@ export const EN_UI: Record<string, string> = {
   'Số lượng': 'Amount',
   'Cộng dồn quà của mọi viewer; đủ số lượng thì hết ván này sẽ đổi game.': 'Gifts from all viewers add up; once the amount is reached, the game switches when the current round ends.',
   'Giữ game tối thiểu (giây)': 'Minimum game time (seconds)',
-  'Sau khi đổi, quà trong khoảng này không được tính để game mới kịp chơi.': 'After a switch, gifts in this window don’t count, so the new game gets played.',
+  'Quà trong khoảng này tính từ lúc game bắt đầu không được tính, để game mới kịp chơi.': 'Gifts in this window from the start of a game don’t count, so the new game gets played.',
   // AI question generation
   'Đã lưu key và kết nối thử thành công.': 'Key saved and test connection succeeded.',
   'Đã lưu key nhưng kết nối thử lỗi:': 'Key saved, but the test connection failed:',

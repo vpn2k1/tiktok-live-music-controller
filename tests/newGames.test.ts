@@ -175,15 +175,63 @@ test('Lật hình: pairs stay open and score, misses peek then flip back', () =>
   const twin = state.faces.findIndex((f: string, i: number) => i > 0 && f === face);
   const other = state.faces.findIndex((f: string) => f !== face);
   const miss = g.handle(state, chat('a', `1 ${other + 1}`), config, ctx(1000));
-  assert.deepEqual(miss.state.peek, { a: 0, b: other, until: 1000 + PEEK_MS });
+  assert.deepEqual(miss.state.peeks, [{ a: 0, b: other, until: 1000 + PEEK_MS }]);
   assert.equal(g.view(miss.state, config).cards.cards[0].state, 'peek');
-  assert.deepEqual(g.handle(miss.state, chat('b', `1 ${twin + 1}`), config, ctx(1500)).state, miss.state, 'wait while a miss is showing');
-  assert.equal(g.tick(miss.state, config, ctx(1000 + PEEK_MS)).state.peek, null);
-  const hit = g.handle(miss.state, chat('b', `1 ${twin + 1}`), config, ctx(1000 + PEEK_MS));
+  assert.deepEqual(g.tick(miss.state, config, ctx(1000 + PEEK_MS)).state.peeks, []);
+  // Another viewer's correct pair counts even while the miss is still showing.
+  const hit = g.handle(miss.state, chat('b', `1 ${twin + 1}`), config, ctx(1500));
   assert.deepEqual(hit.awards, [{ user: 'b', nickname: 'B', points: 100 }]);
   assert.equal(hit.state.matched[0] && hit.state.matched[twin], true);
+  assert.deepEqual(hit.state.peeks, [], 'the matched card leaves the miss');
   state = hit.state;
   assert.equal(g.view(state, config).cards.cards[twin].state, 'good');
+  assert.deepEqual(g.handle(state, chat('c', `1 ${twin + 1}`), config, ctx(1600)).awards ?? [], [], 'a found pair scores once');
+});
+
+test('Lật hình: a busy room — many flips in one batch are all handled, all pairs found = win', () => {
+  const config = normalizeConfig(memoryGame, { pairs: 6, points: 10 });
+  const g: any = memoryGame;
+  let state = g.start(config, startCtx()).state;
+  const twinOf = (i: number) => state.pairIds.findIndex((id: number, j: number) => j !== i && id === state.pairIds[i]);
+  const apply = (user: string, text: string, now: number) => {
+    const r = g.handle(state, chat(user, text), config, ctx(now));
+    if (r) { r.commit?.(); state = r.state; }
+    return r;
+  };
+  // Five different misses at the same moment: all of them show.
+  const used = new Set<number>();
+  const wrong: [number, number][] = [];
+  for (let x = 0; x < 12; x += 1) {
+    const y = [...Array(12).keys()].find((k) => k !== x && !used.has(k) && !used.has(x) && state.pairIds[k] !== state.pairIds[x]);
+    if (y == null || used.has(x)) continue;
+    used.add(x).add(y);
+    wrong.push([x, y]);
+  }
+  wrong.slice(0, 5).forEach(([x, y], k) => apply(`w${k}`, `${x + 1} ${y + 1}`, 1000));
+  const peeking = g.view(state, config).cards.cards.filter((card: any) => card.state === 'peek').length;
+  assert.equal(peeking, 8, 'the 4 newest misses are visible at once');
+  // A miss on a card that is already showing replaces the old one (a card is in one miss only).
+  const [x0, y0] = wrong[1]!;
+  const z = [...Array(12).keys()].find((k) => k !== x0 && k !== y0 && state.pairIds[k] !== state.pairIds[x0] && !state.peeks.some((p: any) => p.a === k || p.b === k))!;
+  apply('again', `${x0 + 1} ${z + 1}`, 1010);
+  assert.ok(state.peeks.every((p: any) => [p.a, p.b].filter((c: number) => c === x0).length <= 1));
+  assert.equal(state.peeks.filter((p: any) => p.a === x0 || p.b === x0).length, 1);
+  // The whole room answers every pair in the same 100 ms batch: every pair is taken, the last one ends the round.
+  const done = new Set<number>();
+  let last: any = null;
+  for (let i = 0; i < 12; i += 1) {
+    if (done.has(i)) continue;
+    const j = twinOf(i);
+    done.add(i).add(j);
+    last = apply(`p${i}`, `${i + 1} ${j + 1}`, 1050);
+    assert.ok(last.awards?.length, `pair ${i + 1}-${j + 1} scored`);
+  }
+  assert.equal(last.finish, true, 'all pairs open → the round is won');
+  assert.equal(state.matched.every(Boolean), true);
+  assert.equal(g.handle(state, chat('late', '1 2'), config, ctx(1060)), null, 'nothing left to flip');
+  const result = g.finish(state, config, ctx(1100));
+  assert.match(result.message, /Tìm đủ 6 cặp/);
+  assert.equal(result.effects[0].podium.length, 3);
 });
 
 test('Thử thách tim: milestones unlock, the last one ends the round, top likers score', () => {

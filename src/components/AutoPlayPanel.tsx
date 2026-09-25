@@ -201,7 +201,7 @@ export default function AutoPlayPanel({ games, settings, onChange, session, loop
               <span>{t('Giữ game tối thiểu (giây)')}</span>
               <input type="number" min={0} max={3600} value={settings.giftCooldownSeconds} onChange={(event) => onChange({ giftCooldownSeconds: Number(event.target.value) })} />
             </label>
-            <p className="field-hint">{t('Sau khi đổi, quà trong khoảng này không được tính để game mới kịp chơi.')}</p>
+            <p className="field-hint">{t('Quà trong khoảng này tính từ lúc game bắt đầu không được tính, để game mới kịp chơi.')}</p>
           </div>
         </details>
       </div>

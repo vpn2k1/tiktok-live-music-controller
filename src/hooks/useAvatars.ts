@@ -47,6 +47,7 @@ export function overlayAvatarNames(state: Omit<OverlayState, 'updatedAt' | 'avat
     ...state.leaderboard.map((entry) => entry.nickname),
     ...state.game.rows.flatMap((row) => (row.avatar ? [row.avatar] : [])),
     ...(state.game.race?.lanes.map((lane) => lane.label) ?? []),
+    ...(state.game.grow?.items.map((item) => item.label) ?? []),
     ...state.effects.flatMap((effect) => [...(effect.user ? [effect.user] : []), ...(effect.podium?.map((entry) => entry.name) ?? [])]),
     ...state.alerts.flatMap((alert) => (alert.name ? [alert.name] : []))
   ];

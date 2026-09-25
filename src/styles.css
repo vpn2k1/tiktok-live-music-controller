@@ -385,7 +385,7 @@ h1 { font-weight: 800; font-size: 30px; letter-spacing: 0; text-shadow: 0 3px 0 
   box-shadow: inset 0 2px 0 rgba(255,255,255,.12), 0 2px 0 var(--ink);
 }
 .chip:hover { border-color: var(--ink); filter: brightness(1.15); }
-.group-chip.active { background: linear-gradient(180deg, #ffe680 0 45%, #f5b400 50%); color: #3b2a05; border-color: var(--ink); }
+.group-chip.active, .chip.active { background: linear-gradient(180deg, #ffe680 0 45%, #f5b400 50%); color: #3b2a05; border-color: var(--ink); }
 .group-chip.active small { color: #5c4300; }
 .status-pill { border: 2px solid var(--ink); background: linear-gradient(180deg, #2f2870, #1e1950); color: #efeaff; font-weight: 700; box-shadow: 0 3px 0 var(--ink); }
 .tabs, .zoom-control, .segmented, .frame-presets, .position-grid { background: var(--field); border: 2px solid var(--ink); box-shadow: inset 0 2px 4px rgba(0,0,0,.4); }

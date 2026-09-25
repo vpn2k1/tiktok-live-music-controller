@@ -17,12 +17,15 @@ import OverlayPanel from './components/OverlayPanel';
 import Panel from './components/Panel';
 import Toggle from './components/Toggle';
 import { remainingMs, topScores } from './game/engine';
+import { musicCue } from './game/music';
+import { getGame } from './game/registry';
 import type { TestInput } from './game/types';
 import { useAutoPlay } from './game/useAutoPlay';
 import { useLiveGames } from './game/useLiveGames';
 import { useDemoBot } from './hooks/useDemoBot';
 import { useAi } from './hooks/useAi';
 import { overlayAvatarNames, useAvatars } from './hooks/useAvatars';
+import { useGameMusic } from './hooks/useGameMusic';
 import { useGameSounds } from './hooks/useGameSounds';
 import { useLanguage } from './hooks/useLanguage';
 import { useNow } from './hooks/useNow';
@@ -35,6 +38,7 @@ import type {
   OverlayState,
   TikTokStatus
 } from './shared/types';
+import type { MusicTheme } from './shared/bgm';
 import type { LiveEventBatch } from './shared/eventBatch';
 import { LANGUAGE_STORAGE_KEY, LANGUAGES, lookup, setLanguage, t, type Language } from './shared/i18n';
 import type { OverlayConfig } from './shared/overlay';
@@ -330,6 +334,29 @@ export default function App() {
   const { handleEvent: handleAutoPlayEvent } = autoPlay;
   const now = useNow(games.game.phase === 'running', 500);
 
+  // Background music: the running game's theme, the lobby theme, or a short preview from the settings.
+  const [musicPreview, setMusicPreview] = useState<MusicTheme | null>(null);
+  useEffect(() => {
+    if (!musicPreview) return undefined;
+    const timer = window.setTimeout(() => setMusicPreview(null), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [musicPreview]);
+  const liveMusic = musicCue({
+    enabled: games.features.gameMusic,
+    choice: games.features.musicTheme,
+    phase: games.game.phase,
+    game: getGame(games.game.kind),
+    lobbyOpen: autoPlay.lobby != null && games.game.phase !== 'running',
+    endsAt: games.game.endsAt,
+    timerStartedAt: games.game.timerStartedAt,
+    now
+  });
+  // Never two songs at once: the game music gives way to the playlist, or turns it down.
+  const withPlaylist = playing ? games.features.musicWithPlaylist : null;
+  const musicCueNow = musicPreview ? { theme: musicPreview, level: 1, urgent: false } : withPlaylist === 'yield' ? null : liveMusic;
+  const playlistDucked = !musicPreview && liveMusic != null && withPlaylist === 'duck';
+  useGameMusic(musicCueNow, games.features.musicVolume / 100);
+
   const processLiveEvent = useCallback((event: LiveEvent) => {
     // First, so the follow/join bubble below already has the viewer's picture.
     rememberAvatar(event);
@@ -497,8 +524,8 @@ export default function App() {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (audio) audio.volume = volume;
-  }, [volume]);
+    if (audio) audio.volume = volume * (playlistDucked ? 0.3 : 1);
+  }, [playlistDucked, volume]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -823,6 +850,8 @@ export default function App() {
               cooldownSeconds={rules.commentCooldownSeconds}
               onCooldownChange={(seconds) => updateRule('commentCooldownSeconds', seconds)}
               hostUsername={hostUsername}
+              musicPreview={musicPreview}
+              onPreviewMusic={setMusicPreview}
             />
 
             <details className="panel fold-panel">

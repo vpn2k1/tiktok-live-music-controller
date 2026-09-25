@@ -6,21 +6,25 @@ import { podiumOf } from '../series';
 /**
  * "Lật hình ghép cặp": face-down cards hide pairs. A viewer comments two
  * numbers to flip them; a pair stays open and scores, otherwise both flip back
- * after a moment. The round ends when every pair is found (or time runs out).
+ * after a moment. Every viewer's flip counts, even while other misses are
+ * still showing (a busy room never waits on one miss). The round ends when
+ * every pair is found (or time runs out).
  * The two faces of a pair may differ (あ ↔ a, 猫 ↔ mèo) for language practice.
  */
 const FACES = ['🍎', '🍌', '🍇', '🍓', '🍉', '🍒', '🐶', '🐱', '🐼', '🦊', '🐸', '🐧', '⚽', '🎸', '🚀', '🌈', '🍦', '🎁'];
 export const EMOJI_PAIRS = FACES.map((face) => `${face} | ${face}`).join('\n');
 /** How long a wrong pair stays face up. */
 export const PEEK_MS = 1800;
+/** Misses shown face up at the same time; older ones flip back early. */
+export const MAX_PEEKS = 4;
 
 export interface MemoryRound {
   faces: string[];
   /** Cards with the same id belong together. */
   pairIds: number[];
   matched: boolean[];
-  /** Two cards shown face up after a miss, until `until`. */
-  peek: { a: number; b: number; until: number } | null;
+  /** Misses shown face up (two cards each) until `until`; a card is in at most one. */
+  peeks: { a: number; b: number; until: number }[];
   finders: Record<string, { nickname: string; pairs: number }>;
 }
 
@@ -94,7 +98,7 @@ export function createMemoryGame(options: MemoryOptions): GameDefinition<MemoryR
       const picked = shuffle(pool, ctx.random).slice(0, config.pairs);
       const cards = shuffle(picked.flatMap(([a, b], id) => [{ face: a, id }, { face: b, id }]), ctx.random);
       return {
-        state: { faces: cards.map((card) => card.face), pairIds: cards.map((card) => card.id), matched: cards.map(() => false), peek: null, finders: {} },
+        state: { faces: cards.map((card) => card.face), pairIds: cards.map((card) => card.id), matched: cards.map(() => false), peeks: [], finders: {} },
         durationMs: config.seconds * 1000
       };
     },
@@ -103,21 +107,21 @@ export function createMemoryGame(options: MemoryOptions): GameDefinition<MemoryR
       if (input.kind !== 'chat' || allFound(state)) return null;
       const pair = parsePair(input.text, state.faces.length);
       if (!pair) return null;
-      // While a miss is still showing, wait for it to flip back.
-      if (state.peek && ctx.now < state.peek.until) return { state, consumed: true };
       const [a, b] = pair;
       if (state.matched[a] || state.matched[b]) return { state, consumed: true };
+      // Other misses on these cards give way to this flip.
+      const others = state.peeks.filter((peek) => peek.a !== a && peek.b !== a && peek.a !== b && peek.b !== b);
       if (state.pairIds[a] !== state.pairIds[b]) {
         return {
           consumed: true,
           effects: [{ kind: 'wrong', text: `${state.faces[a]} ≠ ${state.faces[b]}`, user: input.nickname }],
-          state: { ...state, peek: { a, b, until: ctx.now + PEEK_MS } }
+          state: { ...state, peeks: [...others, { a, b, until: ctx.now + PEEK_MS }].slice(-MAX_PEEKS) }
         };
       }
       const old = state.finders[input.user];
       const next: MemoryRound = {
         ...state,
-        peek: null,
+        peeks: others,
         matched: state.matched.map((done, index) => done || index === a || index === b),
         finders: { ...state.finders, [input.user]: { nickname: input.nickname, pairs: (old?.pairs ?? 0) + 1 } }
       };
@@ -132,7 +136,8 @@ export function createMemoryGame(options: MemoryOptions): GameDefinition<MemoryR
     },
 
     tick(state, _config, ctx) {
-      return state.peek && ctx.now >= state.peek.until ? { consumed: false, state: { ...state, peek: null } } : null;
+      const peeks = state.peeks.filter((peek) => ctx.now < peek.until);
+      return peeks.length !== state.peeks.length ? { consumed: false, state: { ...state, peeks } } : null;
     },
 
     finish(state) {
@@ -140,7 +145,7 @@ export function createMemoryGame(options: MemoryOptions): GameDefinition<MemoryR
       const best = finders[0];
       const found = state.matched.filter(Boolean).length / 2;
       return {
-        state: { ...state, peek: null, matched: state.faces.map(() => true) },
+        state: { ...state, peeks: [], matched: state.faces.map(() => true) },
         awards: [],
         message: allFound(state)
           ? `${t('🎉 Tìm đủ {found} cặp!', { found })}${best ? ` ${t('Giỏi nhất: {name} ({pairs} cặp)', { name: best.nickname, pairs: best.pairs })}` : ''}`
@@ -174,7 +179,7 @@ export function createMemoryGame(options: MemoryOptions): GameDefinition<MemoryR
           cards: state.faces.map((face, index) => ({
             face,
             label: String(index + 1),
-            state: state.matched[index] ? 'good' as const : state.peek && (state.peek.a === index || state.peek.b === index) ? 'peek' as const : 'closed' as const
+            state: state.matched[index] ? 'good' as const : state.peeks.some((peek) => peek.a === index || peek.b === index) ? 'peek' as const : 'closed' as const
           }))
         },
         rows: finders.map((entry) => ({ label: entry.nickname, avatar: entry.nickname, value: t('{pairs} cặp', { pairs: entry.pairs }) }))

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { GamePhase, OverlayEffect } from '../shared/types';
+import { getAudioContext } from './audioContext';
 
 type Note = [frequency: number, startSec: number, durationSec: number, type?: OscillatorType, slideTo?: number];
 
@@ -19,12 +20,9 @@ const SOUNDS: Record<OverlayEffect['kind'] | 'tick', Note[]> = {
 const MIN_GAP_MS: Partial<Record<keyof typeof SOUNDS, number>> = { hit: 140, score: 160, correct: 120, wrong: 150 };
 const VOLUME = 0.12;
 
-let audioContext: AudioContext | null = null;
-
 function play(kind: keyof typeof SOUNDS): void {
   try {
-    audioContext ??= new AudioContext();
-    const ctx = audioContext;
+    const ctx = getAudioContext();
     const now = ctx.currentTime;
     for (const [frequency, start, duration, type = 'sine', slideTo] of SOUNDS[kind]) {
       const oscillator = ctx.createOscillator();

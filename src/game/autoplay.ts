@@ -56,7 +56,7 @@ export interface AutoPlaySettings {
   giftName: string;
   /** Gifts of that name (summed over viewers) needed to switch. */
   giftCount: number;
-  /** Minimum time a game stays on before a gift can switch it again. */
+  /** Minimum time a game stays on (from its start) before gifts can switch it. */
   giftCooldownSeconds: number;
   /** Viewers pick the next game on an overlay list (instead of the rotation order). */
   lobbyEnabled: boolean;
@@ -251,6 +251,57 @@ export function loopStep(loop: PlayLoop, settings: AutoPlaySettings, roundRunnin
   return 'restart';
 }
 
+/** What the host sees each tick. */
+export interface HostInput {
+  /** A round is running, and its game. */
+  running: boolean;
+  kind: string | null;
+  /** The auto session is on. */
+  auto: boolean;
+  /** The game list is shown (`timed`: its countdown runs). */
+  list: { timed: boolean } | null;
+}
+
+export type HostAction =
+  | { type: 'none' }
+  /** A game started another way (host, !start, the list) becomes the one being played. */
+  | { type: 'adopt'; gameId: string }
+  | { type: 'roundStarted' }
+  /** A round just ended: its result stays on screen for the round gap. */
+  | { type: 'roundEnded' }
+  | { type: 'restart'; gameId: string }
+  | { type: 'switch'; gameId: string }
+  /** Auto session: start the countdown of a list that waits for its first vote. */
+  | { type: 'timeList' }
+  /** Auto session with nothing on: open the list, or start the first game when the list is off. */
+  | { type: 'openList' }
+  | { type: 'startFirst' };
+
+const NOTHING: HostAction = { type: 'none' };
+
+/** One tick of the game host (the auto session's LIVE timer is `sessionStep`). */
+export function hostStep(loop: PlayLoop | null, settings: AutoPlaySettings, input: HostInput, now: number): HostAction {
+  if (input.running && input.kind && input.kind !== loop?.gameId) return { type: 'adopt', gameId: input.kind };
+  if (!loop) {
+    if (!input.auto || input.running) return NOTHING;
+    if (input.list) return input.list.timed ? NOTHING : { type: 'timeList' };
+    return { type: settings.lobbyEnabled ? 'openList' : 'startFirst' };
+  }
+  if (input.running) return loop.idleSince != null ? { type: 'roundStarted' } : NOTHING;
+  if (loop.idleSince == null) return { type: 'roundEnded' };
+  const step = loopStep(loop, settings, false, now);
+  return step === 'none' ? NOTHING : { type: step, gameId: loop.gameId };
+}
+
+/** The play loop after a bookkeeping action (other actions leave it as is). */
+export function applyHostAction(loop: PlayLoop | null, action: HostAction, now: number): PlayLoop | null {
+  if (action.type === 'adopt') return createLoop(action.gameId, now);
+  if (!loop) return loop;
+  if (action.type === 'roundStarted') return { ...loop, idleSince: null };
+  if (action.type === 'roundEnded') return { ...loop, idleSince: now, roundsPlayed: loop.roundsPlayed + 1 };
+  return loop;
+}
+
 /** The auto session: LIVE length on top of the play loop. */
 export interface AutoPlaySession {
   startedAt: number;
@@ -291,14 +342,20 @@ export interface GiftSwitchState {
 
 export const EMPTY_GIFT_SWITCH: GiftSwitchState = { progress: 0, lastSwitchAt: null };
 
-/** Adds matching gifts; `switch` is true when they reach the threshold (outside the cooldown). */
+/**
+ * Adds matching gifts; `switch` is true when they reach the threshold. Gifts
+ * in the first `giftCooldownSeconds` of a game (`gameSince` = when it was
+ * chosen) are ignored, so a new game gets played — counted from the game's
+ * start, since a switch waits for the previous round to end.
+ */
 export function addGifts(
   state: GiftSwitchState,
   settings: AutoPlaySettings,
   count: number,
-  now: number
+  now: number,
+  gameSince: number | null
 ): { state: GiftSwitchState; switch: boolean } {
-  if (state.lastSwitchAt != null && now - state.lastSwitchAt < settings.giftCooldownSeconds * 1000) {
+  if (gameSince != null && now - gameSince < settings.giftCooldownSeconds * 1000) {
     return { state, switch: false };
   }
   const progress = state.progress + Math.max(1, Math.floor(count) || 1);

@@ -27,6 +27,15 @@ import { avatarFromUser } from '../src/shared/avatar';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+
+/** Shown in menus (About / Hide / Quit), the taskbar and dialogs; packaged builds get it from electron-builder too. */
+const APP_NAME = 'TikLiveVPN';
+app.setName(APP_NAME);
+// Development builds always kept settings, saved state and AI keys in this folder
+// (named after the npm package); keep it so renaming the app loses nothing.
+if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'tiktok-live-music-electron'));
+// Windows groups taskbar buttons and notifications by this id (the packaged appId).
+if (process.platform === 'win32') app.setAppUserModelId('local.tiklivevpn');
 /** Unpackaged runs use Electron's own bundle; show the app icon anyway (packaged builds embed it). */
 const devIcon = app.isPackaged ? null : path.join(__dirname, '..', 'build', 'icon.png');
 const hasDevIcon = devIcon != null && fs.existsSync(devIcon);
@@ -266,7 +275,7 @@ function createWindow(): void {
     minWidth: 420,
     minHeight: 560,
     backgroundColor: '#0b0d12',
-    title: 'TikLiveVPN',
+    title: APP_NAME,
     ...(hasDevIcon && devIcon ? { icon: devIcon } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

@@ -19,6 +19,7 @@ Maintain a small, secure React + Electron TikTok LIVE music controller. UI must 
 - `src/overlay/*`: transparent overlay page (`overlay.html`) for OBS Browser Source.
 - `src/components/*`: small presentational React components.
 - `electron/ai.ts` + `src/shared/ai.ts`: AI generation of bank lines (Gemini, Groq, Grok/xAI); UI in `src/components/AiPanel.tsx` (keys) and `AiBankBox.tsx` (per bank). See `docs/AI.md`.
+- `src/shared/bgm.ts` (pure music loops) + `src/game/music.ts` (which theme plays when) + `src/hooks/useGameMusic.ts` (Web Audio player): game background music composed in code — never add copyrighted audio files.
 - `src/shared/i18n.ts` + `src/shared/en/*.ts`: app language (Vietnamese / English). `t()` takes the Vietnamese source text as the key; the overlay gets the language in `OverlayState.lang`.
 
 ## Safety rules

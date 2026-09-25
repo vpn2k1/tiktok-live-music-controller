@@ -199,6 +199,20 @@ export function podiumOf(top: { nickname: string; value?: string }[], text: stri
   return { kind: 'win', text, user: podium[0]?.name, podium };
 }
 
+/** Default celebration from a round's awards: its top 3 by points on a podium (null when nobody scored). */
+export function awardsPodium(awards: PointAward[], text: string): EffectInput | null {
+  // A viewer can get several awards in a round: rank their totals.
+  const totals = new Map<string, { nickname: string; points: number }>();
+  for (const award of awards) {
+    if (!(award.points > 0)) continue;
+    const entry = totals.get(award.user);
+    if (entry) entry.points += award.points;
+    else totals.set(award.user, { nickname: award.nickname, points: award.points });
+  }
+  const top = [...totals.values()].sort((a, b) => b.points - a.points).slice(0, 3);
+  return top.length ? podiumEffect(top, text) : null;
+}
+
 /** The winner alone in the spotlight (race winner, last survivor…). */
 export function winnerEffect(nickname: string, text: string, value?: string): EffectInput {
   return { kind: 'win', text, user: nickname, podium: [{ name: nickname, value }] };

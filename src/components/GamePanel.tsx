@@ -216,6 +216,17 @@ function RoundStatus({ game, view }: { game: GameState; view: OverlayGameView })
           ))}
         </ol>
       ) : null}
+      {view.grow?.items.length ? (
+        <ol className="vote-options">
+          {view.grow.items.map((item, index) => (
+            <li key={`${index}-${item.label}`}>
+              <span className="track-number">{index + 1}</span>
+              <span className="track-name">{item.label}</span>
+              <strong>{item.value ?? `${item.steps}/${view.grow?.goal}`}</strong>
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {view.crossword ? (
         <div className="cw-mini">
           {view.crossword.rows.map((row, index) => (

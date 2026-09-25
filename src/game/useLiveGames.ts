@@ -17,7 +17,7 @@ import {
 } from './engine';
 import { gameNames, HOST_ONLY, parseGlobalCommand, parseModerators } from './chatCommands';
 import { buildEnglishDictionary, parseEnglishDictionary } from './english';
-import { podiumEffect } from './series';
+import { awardsPodium } from './series';
 import { DEFAULT_FEATURES, likePoints, normalizeFeatures, type LiveFeatures } from './features';
 import { GAMES, getGame, normalizeConfig } from './registry';
 import { EMPTY_VIEW, type GameConfig, type GameContext, type GameInput, type HandleResult, type TestAction } from './types';
@@ -163,8 +163,7 @@ export function useLiveGames(options: LiveGamesOptions) {
 
     const result = definition.finish(current.data, configFor(definition.id), context());
     // Default celebration: the round's top 3 by points on a podium.
-    const top = [...result.awards].filter((award) => award.points > 0).sort((a, b) => b.points - a.points).slice(0, 3);
-    const effects = result.effects ?? [top.length ? podiumEffect(top, result.message) : { kind: 'lose' as const, text: result.message }];
+    const effects = result.effects ?? [awardsPodium(result.awards, result.message) ?? { kind: 'lose' as const, text: result.message }];
     updateGame((old) => {
       const ended = addPoints(endRound(old, result.message, result.state), result.awards);
       return quiet ? ended : pushEffects(ended, effects);

@@ -20,12 +20,13 @@ Desktop app dùng **React thuần + Electron** để:
 - **Overlay cho OBS / TikTok LIVE Studio**: chọn khung 9:16 hoặc 16:9, chọn phần hiển thị (game, bảng xếp hạng, bài đang phát), xem trước ngay trong app.
 - **Khung game:** chọn game, trạng thái vòng chơi, bộ đếm giờ, điểm từng viewer, chống spam comment.
 - **Chơi liên tục:** game đang chơi tự chạy ván mới mãi đến khi có lệnh đổi game (quà, `!doigame`) hoặc streamer đổi tay. Lệnh đổi game luôn chờ hết ván, chúc mừng người thắng (màn hình lớn có tên + avatar: top 3 trên bục, hoặc người về đích đầu tiên) rồi mới về danh sách game cho viewer chọn; không ai chọn hoặc hoà phiếu thì báo và bốc ngẫu nhiên.
-- **Đua vịt theo câu hỏi:** mỗi câu trả lời đúng tiến +1 bước (ai đúng trước tiến trước), ai về đích đầu tiên thắng; dùng bộ câu hỏi có sẵn hoặc câu hỏi riêng / AI tạo.
-- **16 game giải trí:** Quiz A/B/C/D, Rung chuông vàng, Kéo Búa Bao, Phe nào đông hơn?, Gỡ bom, Lật hình ghép cặp, Thử thách tim, Đuổi hình bắt chữ, Câu đố vui, Ước lượng, Đánh boss, Nối chữ, Đoán số, Ai nhanh tay, Đua vịt, Vòng quay thử thách.
+- **Đua bằng câu hỏi:** mỗi câu trả lời đúng tiến +1 (ai đúng trước tiến trước), về đích đầu tiên thắng; dùng bộ câu hỏi có sẵn hoặc câu hỏi riêng / AI tạo. 5 kiểu: Đua vịt (làn đua), Thổi bóng bay (bóng phồng đến khi nổ), Trồng cây (hạt → cây ra quả), Tên lửa lên Mặt Trăng, Xây tháp chạm mây.
+- **20 game giải trí:** Quiz A/B/C/D, Rung chuông vàng, Kéo Búa Bao, Phe nào đông hơn?, Gỡ bom, Lật hình ghép cặp, Thử thách tim, Đuổi hình bắt chữ, Câu đố vui, Ước lượng, Đánh boss, Nối chữ, Đoán số, Ai nhanh tay, Đua vịt, Thổi bóng bay, Trồng cây, Tên lửa lên Mặt Trăng, Xây tháp, Vòng quay thử thách.
 - **5 game đối kháng ⚔️:** Thành trì Đỏ – Xanh (2 phe bắn thành bằng !ban / tim / quà), Quiz Đỏ – Xanh (2 phe thi trả lời A/B/C/D), Đấu súng miền Tây (1–1, ai !ban trước khi thấy "BẮN!" thì thắng), Vua của đồi (tranh vương miện bằng !cuop, giữ càng lâu càng nhiều điểm), Team battle (2 đội đua điểm bằng tim / quà).
 - **4 game tiếng Nhật 🇯🇵:** Đọc Kana (Hiragana / Katakana / từ ngắn → romaji), Từ vựng tiếng Nhật (nghĩa Việt → chữ Nhật / kana / romaji), Quiz tiếng Nhật, Ghép cặp Kana.
 - **4 game tiếng Trung 🇨🇳:** Đọc Pinyin (chữ Hán → pinyin, dấu thanh tuỳ ý), Từ vựng tiếng Trung (nghĩa Việt → chữ Hán / pinyin), Quiz tiếng Trung (HSK 1), Ghép cặp chữ Hán.
 - **10 game tiếng Anh** cho kênh dạy tiếng Anh: Đúng hay Sai, Unscramble, Dịch nhanh, Emoji Guess, Sentence Builder, Hangman, Name It!, English Quiz, Word Chain (EN), Ô chữ. Ngân hàng từ/câu hỏi sửa được ngay trong app (nhập được file .txt / .csv).
+- **Nhạc nền game:** nhạc tự soạn trong app (không dùng bài có bản quyền, không lo TikTok tắt tiếng): Vui nhộn, Hồi hộp, Đối kháng, Nhẹ nhàng, nhạc chờ chọn game; tự chọn theo game, dồn dập hơn khi sắp hết giờ, tự nhường khi đang phát playlist.
 - **Tính năng nền:** bảng xếp hạng fan (điểm từ comment/tim/gift), chào người follow / vào phòng kèm âm thanh.
 - **Comment thử:** ô gửi comment từ viewer ngẫu nhiên để test game khi chưa LIVE.
 - **Cửa sổ game điều khiển được:** bấm vào cửa sổ game → ☰ để về danh sách game giữa ván (điểm vẫn tính); bấm một game trong danh sách để chơi ngay.

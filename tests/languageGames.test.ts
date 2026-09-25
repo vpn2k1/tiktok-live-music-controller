@@ -73,7 +73,7 @@ test('Ghép cặp: two different faces make a pair', () => {
   const cat = state.faces.indexOf('猫');
   const meo = state.faces.indexOf('mèo');
   const water = state.faces.indexOf('nước');
-  assert.equal(g.handle(state, chat('a', `${cat + 1} ${water + 1}`), config, ctx(0)).state.peek != null, true, 'wrong pair peeks');
+  assert.equal(g.handle(state, chat('a', `${cat + 1} ${water + 1}`), config, ctx(0)).state.peeks.length, 1, 'wrong pair peeks');
   const hit = g.handle(state, chat('b', `${cat + 1} ${meo + 1}`), config, ctx(0));
   assert.deepEqual(hit.awards, [{ user: 'b', nickname: 'B', points: 50 }]);
 });
