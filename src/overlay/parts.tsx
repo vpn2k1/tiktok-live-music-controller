@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
-import type { OverlayCards, OverlayCrossword, OverlayGrow, OverlayMenu, OverlayRace, OverlayRow, OverlayTeam, OverlayWheel } from '../shared/types';
+import type { OverlayArena, OverlayCards, OverlayCrossword, OverlayGrow, OverlayMenu, OverlayRace, OverlayRow, OverlayTeam, OverlayWheel } from '../shared/types';
 import { t } from '../shared/i18n';
 
 /** Stable, bright color for a viewer name (no network avatars needed). */
@@ -249,6 +249,46 @@ export function GrowStage({ grow }: { grow: OverlayGrow }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** Names are written under balls at least this wide (share of the field width); smaller ones show only the avatar. */
+const ARENA_NAME_MIN = 0.07;
+
+/**
+ * Arena field: the walls (closing in), and one ball per player with their
+ * avatar. Positions animate, so pushes and growth are visible; balls knocked
+ * out play a fall (pushed away / into the sea).
+ */
+export function ArenaField({ arena }: { arena: OverlayArena }) {
+  const { bounds } = arena;
+  return (
+    <div className={`ov-arena ${arena.kind}`}>
+      <div
+        className="ov-arena-field"
+        style={{ left: `${bounds.left * 100}%`, top: `${bounds.top * 100}%`, right: `${(1 - bounds.right) * 100}%`, bottom: `${(1 - bounds.bottom) * 100}%` }}
+      />
+      {arena.players.length ? null : <p className="ov-arena-empty">{arena.emptyHint}</p>}
+      {arena.props?.map((prop, index) => (
+        <span key={`p${index}`} className="ov-arena-prop" style={{ left: `${prop.x * 100}%`, top: `${prop.y * 100}%` }} aria-hidden="true">{prop.icon}</span>
+      ))}
+      {arena.players.map((player) => {
+        const diameter = player.r * 2;
+        return (
+          <div
+            key={player.id}
+            className={`ov-ball ${player.state}`}
+            style={{ left: `${player.x * 100}%`, top: `${player.y * 100}%`, width: `${diameter * 100}%`, '--d': diameter, '--c': nameColor(player.label) } as CSSProperties}
+          >
+            <span className="ov-ball-face"><Avatar name={player.label} size={40} /></span>
+            {/* Bubbles start anonymous (a crowd of tiny balls); in the other games the names matter (who holds the bomb…). */}
+            {diameter >= ARENA_NAME_MIN || arena.kind !== 'bubble' ? <span className="ov-ball-name">{player.label}</span> : null}
+            {player.value ? <span className="ov-ball-value">{player.value}</span> : null}
+            {player.badge ? <span className="ov-ball-badge" aria-hidden="true">{player.badge}</span> : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

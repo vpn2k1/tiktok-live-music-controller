@@ -1,5 +1,7 @@
 import { emojiGame, sentenceGame, translateGame, unscrambleGame } from './games/answerGames';
 import { bombGame } from './games/bomb';
+import { bubbleArenaGame, survivalGame } from './games/arena';
+import { balloonShootGame, duelBracketGame, hotPotatoGame, meltingIceGame, musicalChairsGame } from './games/partyGames';
 import { bossGame } from './games/boss';
 import { castleSiegeGame } from './games/castleSiege';
 import { crosswordGame } from './games/crossword';
@@ -69,6 +71,13 @@ export const GAMES: AnyGame[] = [
   teamQuizGame,
   duelGame,
   kingOfHillGame,
+  bubbleArenaGame,
+  survivalGame,
+  musicalChairsGame,
+  meltingIceGame,
+  duelBracketGame,
+  hotPotatoGame,
+  balloonShootGame,
   teamBattleGame,
   // English
   trueFalseGame,

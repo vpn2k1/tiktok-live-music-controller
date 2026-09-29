@@ -157,6 +157,22 @@ export interface OverlayGrow {
   emptyHint?: string;
 }
 
+/**
+ * Arena games: every player is a ball with their avatar inside a 16:10 field.
+ * Positions and sizes are fractions (x, r of the width; y of the height).
+ */
+export interface OverlayArena {
+  kind: 'bubble' | 'island' | 'chairs' | 'ice' | 'duel' | 'bomb' | 'balloons';
+  /** The field's walls (they close in over the match), as fractions of the full field. */
+  bounds: { left: number; top: number; right: number; bottom: number };
+  /** `id`: stable per player (animation key). `out`: knocked out just now (plays the fall). */
+  players: { id: number; label: string; x: number; y: number; r: number; state: 'alive' | 'grew' | 'hit' | 'out'; value?: string; badge?: string }[];
+  /** Decorations on the field (chairs, crossed swords…), positioned like the players. */
+  props?: { x: number; y: number; icon: string }[];
+  /** Shown while nobody has joined. */
+  emptyHint?: string;
+}
+
 /** Visual treatment hints a game can ask the overlay for. */
 export interface OverlayStyle {
   /** `tiles`: one letter per tile (word games); `boss`: big animated character. */
@@ -238,6 +254,7 @@ export interface OverlayGameView {
   crossword?: OverlayCrossword | null;
   cards?: OverlayCards | null;
   grow?: OverlayGrow | null;
+  arena?: OverlayArena | null;
   style?: OverlayStyle;
 }
 

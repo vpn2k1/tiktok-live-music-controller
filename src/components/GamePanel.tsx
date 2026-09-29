@@ -227,6 +227,17 @@ function RoundStatus({ game, view }: { game: GameState; view: OverlayGameView })
           ))}
         </ol>
       ) : null}
+      {view.arena?.players.length ? (
+        <ol className="vote-options">
+          {view.arena.players.filter((player) => player.state !== 'out').slice(0, 8).map((player, index) => (
+            <li key={player.id}>
+              <span className="track-number">{index + 1}</span>
+              <span className="track-name">{player.label}</span>
+              <strong>{player.value ?? `⌀ ${Math.round(player.r * 200)}`}</strong>
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {view.crossword ? (
         <div className="cw-mini">
           {view.crossword.rows.map((row, index) => (
