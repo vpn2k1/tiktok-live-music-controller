@@ -79,6 +79,13 @@ Team games share `src/game/teamRoster.ts`: a side is picked once and can't be sw
 | 🆚 Quiz Đỏ – Xanh (`quizDoi`) | `!do`/`!xanh`, `a`–`d` | *series* on the quiz banks (presets / own file like Quiz); each viewer's speed points also go to their side (tug-of-war bar); the side with more points wins | speed points per question + `teamBonus` for every scoring member of the winning side |
 | 🤠 Đấu súng miền Tây (`dauSung`) | `!join`, `!ban` | viewers queue (max 50); two duel at a time: after a random `minWait`–`maxWait` s the overlay shows "BẮN!"; the first of the two to type `!ban` wins, shooting before the signal loses, nobody within 4 s = both out. The winner stays on; judged on the signal time (not the 4×/s phase switch) | win `winPoints` + 5 per win in a row; fastest reaction of the round +15 |
 | 👑 Vua của đồi (`vuaDoi`) | `!cuop`, gifts | one crown: `!cuop` takes it unless the king is shielded (`grace` s after each take); the king's gift adds `giftShield` s of shield, a challenger's gift takes the crown through the shield | `pointsPerSecond` × seconds held; longest reign +20 |
+| 🫧 Đấu trường bóng (`dauTruongBong`) | `!join` / `!thamgia` / `!vao` / `!thamchien`, then `a`–`d` | arena game (`src/game/games/arena.ts`): a waiting time `joinSeconds` (default 40) to join, up to `maxPlayers` (default 30; full = start in 3 s); each player is a small ball with their avatar in a 16:10 field. Each correct answer grows the ball by up to `grow` % (instant answer = full, at the deadline = a third); balls drift 12 % toward the centre and push each other (the smaller moves more); walls are solid; a ball squeezed by a stronger one (bigger, then more points, then joined first) by more than half its radius is pushed out. From question 3 the field shrinks `shrink` % a question (default 3, down to 30 %). Last ball wins; after `maxQuestions` the strongest | speed points per correct answer (max 100); top 3: +200/+100/+50 |
+| 🏝 Đảo sinh tồn (`daoSinhTon`) | same | same waiting room; `lives` hearts each (default 3); a wrong or missing answer costs one (nobody loses one when the whole island missed); 0 = falls into the sea; the island shrinks `shrink` % a question (default 4, down to 40 %) and players huddle in. Last survivor wins | same |
+| 🪑 Ghế âm nhạc (`gheAmNhac`) | same | arena game (`partyGames.ts`); each question has `chairsFor(n)` chairs (a fifth fewer, at least one fewer); chairs go to correct answers (fastest first), then wrong answers (fastest first), then the silent; no chair = out. Players walk around an outer ring, the chairs stand on an inner one | same |
+| 🧊 Băng tan (`bangTan`) | same | each player stands on an ice floe (100 %); heat `12 + 3 × (question − 1)`; a correct answer melts 15–75 % of the heat (faster = less), wrong or silent melts 2 × heat; 0 % = into the water; the floe drawn smaller as it melts | same |
+| 🥊 Võ đài loại trực tiếp (`voDai`) | same | players are shuffled into 1-v-1 pairs (odd one = bye 🎟️); only fighters of an undecided pair answer; in a pair the correct answer wins (both correct = faster); both miss = they fight again next question; when every pair is decided the winners are paired again; last one = champion | same |
+| 💣 Chuyền bom (`chuyenBom`) | same | `bombsFor(n)` bombs (one per four players) with fuses of 1–3 questions; a holder who answers correctly passes the bomb (fastest first) to the silent, then wrong, then slowest player; each question every fuse burns one; at 0 it explodes and its holder is out; bombs are topped up to `bombsFor(alive)` | same |
+| 🏹 Bắn bóng bay (`banBong`) | same | `lives` balloons each (default 3); each correct answer (fastest first) pops one balloon of an opponent not hit yet this question: players who missed first, then the slowest correct answers; 0 balloons = out | same |
 
 ## Japanese 🇯🇵 and Chinese 🇨🇳 games
 
@@ -215,6 +222,14 @@ Every bank field (Quiz, English Quiz, Đua vịt, Unscramble, Dịch nhanh, Emoj
 - A live check under the field: "✅ N dòng dùng được · ⚠ M dòng sai mẫu, sẽ bỏ qua: dòng …" (`GameDefinition.checkBank`).
 - Quiz answer cell: letter A–D **or** the correct answer copied as text.
 - **Thứ tự câu hỏi** (series games): **Ngẫu nhiên** (no repeats until the bank is used) or **Đúng thứ tự trong ngân hàng / file** (each round continues where the last one stopped, wrapping at the end).
+
+### Arena games: waiting room and matches
+
+- Not enough players (`minPlayers`, default 2) when the waiting time ends: it is extended by half, twice; then the round ends ("Chưa đủ người chơi") and the play loop opens a fresh waiting room after the round gap — new viewers can join between matches.
+- Only players on the field answer; other viewers' letters stay normal chat. `!join` during a match is swallowed (no music rule).
+- Questions never repeat inside a match, and the next match continues with questions not asked yet (the finished match's `asked` list), until the bank is used up.
+- A question never empties the field: if everyone still in would be knocked out, the best of them (by the ranking before the question) stays.
+- Balance check (simulated 40 matches of 12 and 40 players with mixed skill): every game ends within 4–30 questions, and the top third of players wins 80–97 % of the matches.
 
 ### Nhóm game (game groups)
 

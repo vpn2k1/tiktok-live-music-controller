@@ -19,7 +19,7 @@ import { safeAvatarUrl } from '../shared/avatar';
 import { setLanguage, t } from '../shared/i18n';
 import type { OverlayState } from '../shared/types';
 import { AlertFeed, Confetti, EffectBanner, Popups, useEffectPlayer } from './effects';
-import { AnswerTiles, Avatar, AvatarContext, CardGrid, CountdownRing, Crossword, FitBox, GameMenu, GrowStage, LetterTiles, RaceTrack, TugOfWar, Wheel } from './parts';
+import { AnswerTiles, ArenaField, Avatar, AvatarContext, CardGrid, CountdownRing, Crossword, FitBox, GameMenu, GrowStage, LetterTiles, RaceTrack, TugOfWar, Wheel } from './parts';
 
 function isOverlayState(value: unknown): value is OverlayState {
   if (!value || typeof value !== 'object') return false;
@@ -244,6 +244,7 @@ export default function Overlay() {
       {game.crossword ? <Crossword crossword={game.crossword} /> : null}
       {game.cards ? <CardGrid cards={game.cards} /> : null}
       {game.grow ? <GrowStage grow={game.grow} /> : null}
+      {game.arena ? <ArenaField arena={game.arena} /> : null}
     </>
   );
   const rows = (
