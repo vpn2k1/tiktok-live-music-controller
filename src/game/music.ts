@@ -21,6 +21,7 @@ const BY_GAME: Record<string, MusicTheme> = {
   guessNumber: 'quiz',
   fastestFinger: 'quiz',
   crossword: 'quiz',
+  trieuPhu: 'quiz',
   boss: 'versus'
 };
 

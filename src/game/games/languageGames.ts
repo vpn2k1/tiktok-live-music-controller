@@ -1,6 +1,7 @@
 import { CHINESE_QUIZ_BANK, CHINESE_WORDS_BANK, HANZI_PAIRS } from '../content/chinese';
 import { HIRAGANA_BANK, JAPANESE_QUIZ_BANK, JAPANESE_VOCAB_BANK, KANA_PAIRS, KANA_WORDS_BANK, KATAKANA_BANK } from '../content/japanese';
 import { foldChinese, foldJapanese } from '../text';
+import { bankPresets, JA_VOCAB_PRESETS, ZH_VOCAB_PRESETS } from '../vocab';
 import { createAnswerGame, type AnswerItem } from './answerGames';
 import { createMemoryGame } from './memory';
 import { createQuizGame, QUIZ_SAMPLE } from './quiz';
@@ -53,6 +54,10 @@ export function chineseVocabItem(parts: string[]): AnswerItem | null {
   return hanzi && meaning ? { prompt: meaning, answers, display: `${hanzi} (${pinyin.split('/')[0]?.trim() ?? ''})`, hint: meaning, sayAs: hanzi } : null;
 }
 
+/** The app's own word list first, then the VpngoPlay sets. */
+const JAPANESE_PRESETS = { default: { label: 'Từ vựng cơ bản của app', bank: JAPANESE_VOCAB_BANK }, ...bankPresets(JA_VOCAB_PRESETS) };
+const CHINESE_PRESETS = { default: { label: 'Từ vựng cơ bản của app', bank: CHINESE_WORDS_BANK }, ...bankPresets(ZH_VOCAB_PRESETS) };
+
 const HELP = '# Dòng bắt đầu bằng # là ghi chú, app bỏ qua. Lưu file dạng UTF-8.';
 
 // ---------- Tiếng Nhật ----------
@@ -93,6 +98,7 @@ export const japaneseVocabGame = createAnswerGame({
   bankLabel: 'Từ vựng',
   bankHint: 'Mỗi dòng: chữ Nhật | cách đọc/romaji[/cách khác] | nghĩa tiếng Việt.',
   defaultBank: JAPANESE_VOCAB_BANK,
+  presets: JAPANESE_PRESETS,
   defaultScoring: 'all',
   sample: ['# Mẫu từ vựng tiếng Nhật — mỗi dòng 1 từ:', '# chữ Nhật | cách đọc (kana/romaji, cách nhau bằng /) | nghĩa tiếng Việt', HELP, '猫 | ねこ/neko | con mèo', 'ありがとう | arigatou/arigato | cảm ơn'].join('\n'),
   match: JAPANESE_MATCH,
@@ -137,6 +143,7 @@ export const pinyinReadingGame = createAnswerGame({
   bankLabel: 'Chữ / từ',
   bankHint: 'Mỗi dòng: chữ Hán | pinyin[/cách khác] | nghĩa tiếng Việt.',
   defaultBank: CHINESE_WORDS_BANK,
+  presets: CHINESE_PRESETS,
   defaultScoring: 'all',
   sample: ['# Mẫu tiếng Trung — mỗi dòng 1 từ (dùng cho Đọc Pinyin và Từ vựng):', '# chữ Hán | pinyin | nghĩa tiếng Việt', HELP, '你好 | nǐ hǎo | xin chào', '猫 | māo | con mèo'].join('\n'),
   match: CHINESE_MATCH,
@@ -156,6 +163,7 @@ export const chineseVocabGame = createAnswerGame({
   bankLabel: 'Từ vựng',
   bankHint: 'Mỗi dòng: chữ Hán | pinyin | nghĩa tiếng Việt.',
   defaultBank: CHINESE_WORDS_BANK,
+  presets: CHINESE_PRESETS,
   defaultScoring: 'all',
   sample: ['# Mẫu tiếng Trung — mỗi dòng 1 từ:', '# chữ Hán | pinyin | nghĩa tiếng Việt', HELP, '谢谢 | xiè xie | cảm ơn', '水 | shuǐ | nước'].join('\n'),
   match: CHINESE_MATCH,

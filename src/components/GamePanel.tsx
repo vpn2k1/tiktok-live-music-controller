@@ -255,6 +255,13 @@ function RoundStatus({ game, view }: { game: GameState; view: OverlayGameView })
           {view.cards.cards.map((card, index) => <span key={index} className={`cards-mini-cell ${card.state}`}>{card.state === 'closed' ? card.label : card.face}</span>)}
         </div>
       ) : null}
+      {view.grid ? (
+        <div className={`grid-mini ${view.grid.kind}`} style={{ gridTemplateColumns: `repeat(${view.grid.columns}, 1fr)` }}>
+          {view.grid.cells.map((cell, index) => (
+            <span key={index} className={`grid-mini-cell ${cell.state}`} title={cell.sub}>{cell.text || cell.label || '·'}</span>
+          ))}
+        </div>
+      ) : null}
       {view.wheel && view.wheel.target != null ? (
         <p className="field-hint">{view.wheel.spinning ? t('Đang quay…') : t('Ô vừa trúng: {segment}', { segment: view.wheel.segments[view.wheel.target] ?? '' })}</p>
       ) : null}

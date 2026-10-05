@@ -13,6 +13,7 @@ Maintain a small, secure React + Electron TikTok LIVE music controller. UI must 
 - `src/game/bankFile.ts`: bank file import (.txt `|`, .csv, tab rows, `#` comments) and per-line checks; samples live on each textarea `SettingField.sample`, saved via main's `dialog:save-text` (user picks the path).
 - `src/game/series.ts`: multi-question rounds with speed scoring (quiz, English answer games, hangman); `src/game/scoreboard.ts`: leaderboard for huge rooms; `src/shared/eventBatch.ts`: 100 ms event batches with overload caps.
 - `src/game/lobby.ts`: viewer game list (vote the next game by comment number / gifts; no votes or a tie = announced random pick) and the `!doigame` whitelist; rendered as the overlay game card. It lists the active game group (`groups` in `autoplay.ts`, edited in `GameLibrary.tsx`).
+- `src/game/vocab.ts`: English / Japanese / Chinese word sets shared by the word games (Lô tô, Cờ caro, Ai là triệu phú, Đoán chữ, Vòng chữ, Tìm từ); generated content in `src/game/content/vocab-{en,ja,zh}.ts` from the VpngoPlay decks by `scripts/import-vpngoplay.mjs` (re-run it, don't hand-edit). Word boards render with the overlay `grid` part.
 - `src/game/chatCommands.ts`: global chat commands (`!help`, `!rank`, host-only `!start/!stop/!cancel/!games`).
 - `tests/*.test.ts`: unit tests for the pure game modules (`npm test`).
 - `src/game/*`: game engine, controller hook (`useLiveGames`), registry, pure game plugins in `src/game/games/*`, Vietnamese/English word helpers, default English content in `src/game/content/`.

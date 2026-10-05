@@ -179,7 +179,7 @@ export function scoreQuestion<Q>(state: SeriesState<Q>, config: SeriesConfig): {
 }
 
 /** `commit` that adds custom awards (games that score without "correct") to the round totals. */
-export function commitTotals<Q>(state: SeriesState<Q>, awards: PointAward[]): () => void {
+export function commitTotals(state: { totals: Scoreboard }, awards: PointAward[]): () => void {
   return () => {
     for (const award of awards) state.totals.add(award.user, award.nickname, award.points);
   };

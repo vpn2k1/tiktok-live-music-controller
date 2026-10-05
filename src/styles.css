@@ -237,6 +237,20 @@ h1 { margin: 0; font-size: 28px; letter-spacing: -.03em; }
 .cards-mini-cell.peek { background: #fde68a; color: #3b2a05; }
 .cards-mini-cell.good { background: #22c55e; }
 .cards-mini-cell.bad { background: #e11d48; }
+/* Word game grid preview in the game panel */
+.grid-mini { display: grid; gap: 2px; font: 700 12px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.grid-mini.words { gap: 3px; font: 600 11px/1.15 system-ui, sans-serif; }
+.grid-mini-cell { display: grid; place-items: center; min-height: 18px; padding: 1px 2px; border-radius: 3px; background: #1b2130; color: #eef2f8; text-align: center; overflow-wrap: anywhere; }
+.grid-mini.words .grid-mini-cell { min-height: 30px; border-radius: 6px; }
+.grid-mini-cell.blank { visibility: hidden; }
+.grid-mini-cell.empty { background: #0e121a; color: #4b5563; }
+.grid-mini-cell.active { outline: 1px solid #a5b4fc; background: #3b3480; }
+.grid-mini-cell.hit { background: #16a34a; }
+.grid-mini-cell.near { background: #d97706; }
+.grid-mini-cell.miss { background: #374151; color: #9ca3af; }
+.grid-mini-cell.found { background: #fde68a; color: #3b2a05; }
+.grid-mini-cell.red { background: #e11d48; }
+.grid-mini-cell.blue { background: #2563eb; }
 /* Crossword preview in the game panel */
 .cw-mini { display: grid; gap: 2px; font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cw-mini-row { display: flex; gap: 2px; align-items: center; }

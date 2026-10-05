@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
-import type { OverlayArena, OverlayCards, OverlayCrossword, OverlayGrow, OverlayMenu, OverlayRace, OverlayRow, OverlayTeam, OverlayWheel } from '../shared/types';
+import type { OverlayArena, OverlayCards, OverlayCrossword, OverlayGrid, OverlayGrow, OverlayMenu, OverlayRace, OverlayRow, OverlayTeam, OverlayWheel } from '../shared/types';
 import { t } from '../shared/i18n';
 
 /** Stable, bright color for a viewer name (no network avatars needed). */
@@ -379,6 +379,21 @@ export function CardGrid({ cards }: { cards: OverlayCards }) {
             ? <span className="ov-flip-back">{card.label}</span>
             // Words (romaji, meanings) get a smaller font than a single emoji or character.
             : <span className={`ov-flip-face ${Array.from(card.face).length > 2 ? 'text' : ''}`}>{card.face}</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Tile grid of the word games (Wordle, word search, bingo, tic-tac-toe…). */
+export function TileGrid({ grid }: { grid: OverlayGrid }) {
+  return (
+    <div className={`ov-grid ${grid.kind}`} style={{ '--grid-cols': grid.columns } as CSSProperties}>
+      {grid.cells.map((cell, index) => (
+        <span key={index} className={`ov-grid-cell ${cell.state}`}>
+          {cell.label ? <i className="ov-grid-label">{cell.label}</i> : null}
+          <span className="ov-grid-text">{cell.text}</span>
+          {cell.sub ? <small className="ov-grid-sub">{cell.sub}</small> : null}
         </span>
       ))}
     </div>

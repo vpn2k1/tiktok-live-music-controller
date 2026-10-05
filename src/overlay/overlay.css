@@ -586,6 +586,32 @@ html.window-mode .ov-menu { -webkit-app-region: no-drag; }
 @keyframes ov-card-flip { from { transform: rotateY(90deg) scale(.9); } }
 .ov-column.full .ov-cards { flex: 0 0 auto; width: min(100%, calc(420px * var(--card-cols) / 5)); margin-inline: auto; }
 
+/* ---------- Tile grid (Wordle, word search, bingo, caro) ---------- */
+.ov-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(var(--grid-cols), minmax(0, 1fr)); gap: 5px; }
+.ov-grid.words { gap: 7px; }
+.ov-grid-cell {
+  position: relative; min-width: 0; display: grid; place-items: center; align-content: center; border-radius: 8px; border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #4a4396 0 45%, #2e2870 50%);
+  box-shadow: inset 0 -4px 0 rgba(0,0,0,.3), inset 0 2px 0 rgba(255,255,255,.2), 0 3px 0 var(--ink);
+  font-weight: 800; color: #fff; overflow: hidden;
+}
+.ov-grid.letters .ov-grid-cell { aspect-ratio: 1; font-size: min(26px, calc(300px / var(--grid-cols))); text-transform: uppercase; }
+.ov-grid.words .ov-grid-cell { aspect-ratio: 4 / 3; border-radius: 12px; padding: 4px; }
+.ov-grid.words .ov-grid-text { font-size: min(17px, calc(90px / var(--grid-cols) + 6px)); line-height: 1.1; text-align: center; overflow-wrap: anywhere; }
+.ov-grid-label { position: absolute; top: 2px; left: 5px; font-style: normal; font-size: 12px; color: rgba(255,255,255,.75); }
+.ov-grid-sub { max-width: 100%; font-size: 11px; font-weight: 700; opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-grid-cell.blank { visibility: hidden; }
+.ov-grid-cell.empty { background: rgba(0,0,0,.35); box-shadow: inset 0 2px 6px rgba(0,0,0,.4); border-color: rgba(255,255,255,.25); }
+.ov-grid-cell.active { box-shadow: inset 0 -4px 0 rgba(0,0,0,.3), 0 3px 0 var(--ink), 0 0 0 3px #fff, 0 0 16px rgba(255,255,255,.7); animation: ov-glow 1s ease-in-out infinite alternate; }
+.ov-grid-cell.hit { background: linear-gradient(180deg, #86efac 0 45%, #16a34a 50%); animation: ov-tile-flip .5s cubic-bezier(.2,1.5,.4,1) both; }
+.ov-grid-cell.near { background: linear-gradient(180deg, #fde68a 0 45%, #d97706 50%); animation: ov-tile-flip .5s cubic-bezier(.2,1.5,.4,1) both; }
+.ov-grid-cell.miss { background: linear-gradient(180deg, #6b7280 0 45%, #374151 50%); color: rgba(255,255,255,.85); }
+.ov-grid-cell.found { background: linear-gradient(180deg, #fffdf2 0 45%, #ffe38a 50%); color: #3b2a05; text-shadow: none; animation: ov-tile-flip .5s cubic-bezier(.2,1.5,.4,1) both; }
+.ov-grid-cell.found .ov-grid-label { color: rgba(59,42,5,.7); }
+.ov-grid-cell.red { background: linear-gradient(180deg, #ff9aa8 0 45%, #e11d48 50%); animation: ov-tile-flip .5s cubic-bezier(.2,1.5,.4,1) both; }
+.ov-grid-cell.blue { background: linear-gradient(180deg, #93c5fd 0 45%, #2563eb 50%); animation: ov-tile-flip .5s cubic-bezier(.2,1.5,.4,1) both; }
+.ov-column.full .ov-grid { flex: 0 0 auto; width: min(100%, calc(440px * var(--grid-cols) / 6)); margin-inline: auto; }
+
 /* ---------- How to join ---------- */
 .ov-howto { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .ov-howto > span {

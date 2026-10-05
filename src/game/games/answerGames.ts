@@ -18,6 +18,7 @@ import {
   type SeriesState
 } from '../series';
 import { checkBankLines } from '../bankFile';
+import { bankPresets, EN_VOCAB_PRESETS } from '../vocab';
 import { chatTest, commandArgument, shuffle, view, type GameCategory, type GameDefinition } from '../types';
 import { numberLocale, t } from '../../shared/i18n';
 
@@ -314,6 +315,9 @@ export function sentenceItem(parts: string[]): AnswerItem | null {
   return words.length >= 3 && words.length <= 14 ? { prompt: sentence, answers: [normalized], display: sentence, hint: meaning } : null;
 }
 
+/** The app's own word list first, then the VpngoPlay sets. */
+const ENGLISH_VOCAB_PRESETS = { default: { label: 'Từ vựng cơ bản của app', bank: VOCAB_BANK }, ...bankPresets(EN_VOCAB_PRESETS) };
+
 const VOCAB_SAMPLE = [
   '# Mẫu từ vựng — mỗi dòng 1 từ:',
   '# từ tiếng Anh[/cách viết khác] | nghĩa tiếng Việt',
@@ -335,6 +339,7 @@ export const unscrambleGame = createAnswerGame({
   bankLabel: 'Từ vựng',
   bankHint: 'Mỗi dòng: english[/từ khác] | nghĩa tiếng Việt',
   defaultBank: VOCAB_BANK,
+  presets: ENGLISH_VOCAB_PRESETS,
   defaultScoring: 'all',
   sample: VOCAB_SAMPLE,
   parse: vocabItem,
@@ -352,6 +357,7 @@ export const translateGame = createAnswerGame({
   bankLabel: 'Từ vựng',
   bankHint: 'Mỗi dòng: english[/từ khác] | nghĩa tiếng Việt',
   defaultBank: VOCAB_BANK,
+  presets: ENGLISH_VOCAB_PRESETS,
   defaultScoring: 'all',
   sample: VOCAB_SAMPLE,
   parse: vocabItem,

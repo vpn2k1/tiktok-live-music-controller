@@ -242,6 +242,29 @@ export interface OverlayCards {
   columns: number;
 }
 
+/**
+ * Tile grid of the word games: Wordle rows, a word search board, word wheel
+ * slots, a bingo ticket, a tic-tac-toe board.
+ * - blank: no tile (spacer); empty: an unfilled slot; idle: a plain tile;
+ * - active: glowing (being called / asked); hit / near / miss: Wordle colors;
+ * - found: solved / claimed (gold); red / blue: claimed by a team.
+ */
+export type OverlayGridCellState = 'blank' | 'empty' | 'idle' | 'active' | 'hit' | 'near' | 'miss' | 'found' | 'red' | 'blue';
+
+export interface OverlayGrid {
+  /** `letters`: square one-letter tiles; `words`: cards with a short text (meaning). */
+  kind: 'letters' | 'words';
+  columns: number;
+  cells: {
+    text: string;
+    /** Small corner label (the number viewers type). */
+    label?: string;
+    /** Small line under the text (who claimed it). */
+    sub?: string;
+    state: OverlayGridCellState;
+  }[];
+}
+
 /** Display-only description of the running game; each game builds its own. */
 export interface OverlayGameView {
   headline: string | null;
@@ -255,6 +278,7 @@ export interface OverlayGameView {
   cards?: OverlayCards | null;
   grow?: OverlayGrow | null;
   arena?: OverlayArena | null;
+  grid?: OverlayGrid | null;
   style?: OverlayStyle;
 }
 

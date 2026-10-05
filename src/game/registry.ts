@@ -1,4 +1,5 @@
 import { emojiGame, sentenceGame, translateGame, unscrambleGame } from './games/answerGames';
+import { bingoGame } from './games/bingo';
 import { bombGame } from './games/bomb';
 import { bubbleArenaGame, survivalGame } from './games/arena';
 import { balloonShootGame, duelBracketGame, hotPotatoGame, meltingIceGame, musicalChairsGame } from './games/partyGames';
@@ -26,17 +27,22 @@ import {
 } from './games/languageGames';
 import { likeChallengeGame } from './games/likeChallenge';
 import { majorityGame } from './games/majority';
+import { millionaireGame } from './games/millionaire';
 import { memoryGame } from './games/memory';
 import { nameItGame } from './games/nameIt';
 import { englishQuizGame, quizGame } from './games/quiz';
 import { raceGame } from './games/race';
 import { rockPaperScissorsGame } from './games/rockPaperScissors';
 import { teamBattleGame } from './games/teamBattle';
+import { teamCaroGame } from './games/teamCaro';
 import { teamQuizGame } from './games/teamQuiz';
 import { trueFalseGame } from './games/trueFalse';
 import { emojiVietnameseGame, riddleGame } from './games/vietnameseGames';
 import { wheelGame } from './games/wheel';
 import { wordChainGame } from './games/wordChain';
+import { wordleGame } from './games/wordle';
+import { wordSearchGame } from './games/wordSearch';
+import { wordWheelGame } from './games/wordWheel';
 import type { GameConfig, GameDefinition, SettingField } from './types';
 
 // Each definition is fully typed in its own module; the registry erases the
@@ -47,6 +53,7 @@ export type AnyGame = GameDefinition<any, any>;
 export const GAMES: AnyGame[] = [
   // Fun
   quizGame,
+  millionaireGame,
   goldenBellGame,
   rockPaperScissorsGame,
   majorityGame,
@@ -66,6 +73,7 @@ export const GAMES: AnyGame[] = [
   rocketGame,
   towerGame,
   wheelGame,
+  bingoGame,
   // Versus
   castleSiegeGame,
   teamQuizGame,
@@ -79,6 +87,7 @@ export const GAMES: AnyGame[] = [
   hotPotatoGame,
   balloonShootGame,
   teamBattleGame,
+  teamCaroGame,
   // English
   trueFalseGame,
   unscrambleGame,
@@ -90,6 +99,9 @@ export const GAMES: AnyGame[] = [
   englishQuizGame,
   englishWordChainGame,
   crosswordGame,
+  wordleGame,
+  wordWheelGame,
+  wordSearchGame,
   // Japanese
   kanaReadingGame,
   japaneseVocabGame,

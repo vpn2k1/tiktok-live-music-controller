@@ -61,8 +61,8 @@ test('vietnamese words', () => {
 });
 
 test('registry and config normalization', () => {
-  assert.equal(GAMES.length, 50);
-  assert.equal(new Set(GAMES.map((g) => g.id)).size, 50);
+  assert.equal(GAMES.length, 56);
+  assert.equal(new Set(GAMES.map((g) => g.id)).size, 56);
   // Every `!start <name>` name must point to exactly one game.
   const names = GAMES.flatMap((g) => gameNames(g).map((name) => [name, g.id] as const));
   for (const [name, id] of names) assert.deepEqual([...new Set(names.filter(([other]) => other === name).map(([, owner]) => owner))], [id], `name "${name}" is shared`);
