@@ -17,12 +17,25 @@
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win",
     "icons": "electron scripts/make-icons.mjs",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "mobile:dev": "vite --config vite.mobile.config.ts --host 127.0.0.1 --port 5174",
+    "mobile:build": "vite build --config vite.mobile.config.ts && cap sync",
+    "mobile:android": "npm run mobile:build && cap open android",
+    "mobile:ios": "npm run mobile:build && cap open ios",
+    "mobile:apk": "npm run mobile:build && cd mobile/android && ./gradlew assembleDebug"
   },
   "dependencies": {
     "tiktok-live-connector": "^2.4.3"
   },
   "devDependencies": {
+    "@capacitor-community/keep-awake": "^8.0.1",
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/barcode-scanner": "^3.1.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
+    "@capacitor/status-bar": "^8.0.4",
     "@fontsource-variable/baloo-2": "^5.3.0",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",

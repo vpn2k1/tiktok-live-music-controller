@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "TikLiveVPN Screen",
+    "slug": "tiklivevpn-screen",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b0d12",
+    "ios": {
+      "bundleIdentifier": "local.tiklivevpn.screenexpo",
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIStatusBarHidden": true,
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true },
+        "NSLocalNetworkUsageDescription": "Kết nối tới app TikLiveVPN trên máy tính trong cùng mạng Wi-Fi để hiện màn game. / Connects to the TikLiveVPN app on your computer over Wi-Fi to show the game screen."
+      }
+    },
+    "android": {
+      "package": "local.tiklivevpn.screenexpo",
+      "adaptiveIcon": {
+        "backgroundColor": "#0b0d12",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Quét mã QR trên máy tính để ghép nối. / Scans the QR code on your computer to pair.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": { "usesCleartextTraffic": true }
+        }
+      ]
+    ]
+  }
+}

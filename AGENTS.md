@@ -18,6 +18,7 @@ Maintain a small, secure React + Electron TikTok LIVE music controller. UI must 
 - `tests/*.test.ts`: unit tests for the pure game modules (`npm test`).
 - `src/game/*`: game engine, controller hook (`useLiveGames`), registry, pure game plugins in `src/game/games/*`, Vietnamese/English word helpers, default English content in `src/game/content/`.
 - `src/overlay/*`: transparent overlay page (`overlay.html`) for OBS Browser Source.
+- Phone app (`docs/MOBILE.md`): shows the desktop's `/phone` game screen full screen for a TikTok screen-share LIVE. Capacitor version: `src/mobile/*` + `mobile/index.html` (React DOM + CSS), native projects in `mobile/android` and `mobile/ios`, `capacitor.config.ts`, `vite.mobile.config.ts`. Expo (React Native) version: `mobile-expo/` (see its own `AGENTS.md`; React Native only there). Both share `src/shared/phoneLink.ts` and `src/shared/en/mobile.ts`.
 - `src/components/*`: small presentational React components.
 - `electron/ai.ts` + `src/shared/ai.ts`: AI generation of bank lines (Gemini, Groq, Grok/xAI); UI in `src/components/AiPanel.tsx` (keys) and `AiBankBox.tsx` (per bank). See `docs/AI.md`.
 - `src/shared/bgm.ts` (pure music loops) + `src/game/music.ts` (which theme plays when) + `src/hooks/useGameMusic.ts` (Web Audio player): game background music composed in code — never add copyrighted audio files.
@@ -36,6 +37,8 @@ Maintain a small, secure React + Electron TikTok LIVE music controller. UI must 
 10. The overlay window never loads a renderer-supplied URL; it has no preload, runs sandboxed in its own session, denies popups and blocks navigation off the overlay origin (compare parsed `URL.origin`, never string prefixes). It is frameless: the page is the drag area and closes itself with `window.close()` (✕ / Esc); main reports open/closed via `overlay:window-changed`. Its only input back to the app is the URL-hash channel (`#act=menu.<n>` / `#act=pick-<i>.<n>`, parsed by `parseWindowAction` in main from `did-navigate-in-page`, origin-checked); add new actions only to that whitelist.
 11. The main window denies popups and all navigation (e.g. files dropped onto it).
 12. AI API keys live only in main, encrypted with `safeStorage` (session-only memory when the OS can't encrypt); the renderer can set/remove/test a key and sees only `hasKey` + the last 4 characters. Main calls only the fixed HTTPS hosts in `AI_HOSTS`, with the key in a header (never in URLs, logs or error text). The renderer sends a structured request (format, topic, count…), not URLs or raw prompts. AI output is untrusted data: it only becomes bank lines, filtered by the game's `checkBank` and reviewed by the streamer; never execute it. Never send viewer chat to an AI provider.
+
+13. The phone apps load only links that pass `parsePhoneLink` (private IPv4, port 17322, `/phone`, token), re-checked when read from storage. The page gets no access to native code: a sandboxed cross-origin `<iframe>` (Capacitor) or a WebView without message bridge / injected JS that may only navigate to the paired page (Expo). Cleartext HTTP is allowed only for that LAN page.
 
 ## Change workflow
 - For TikTok events, read `.agents/skills/tiktok-events/SKILL.md`.

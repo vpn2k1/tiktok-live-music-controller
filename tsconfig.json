@@ -23,6 +23,8 @@
     "src/**/*.tsx",
     "electron/**/*.ts",
     "scripts/**/*.ts",
-    "vite.config.ts"
+    "vite.config.ts",
+    "vite.mobile.config.ts",
+    "capacitor.config.ts"
   ]
 }

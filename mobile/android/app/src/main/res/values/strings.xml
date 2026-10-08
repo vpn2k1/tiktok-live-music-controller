@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TikLiveVPN Screen</string>
+    <string name="title_activity_main">TikLiveVPN Screen</string>
+    <string name="package_name">local.tiklivevpn.screen</string>
+    <string name="custom_url_scheme">local.tiklivevpn.screen</string>
+</resources>
