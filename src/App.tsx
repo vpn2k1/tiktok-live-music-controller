@@ -40,6 +40,8 @@ import type {
 } from './shared/types';
 import type { MusicTheme } from './shared/bgm';
 import type { LiveEventBatch } from './shared/eventBatch';
+import { appendChatLog, type ChatEntry } from './shared/chatLog';
+import ChatHistory from './components/ChatHistory';
 import { LANGUAGE_STORAGE_KEY, LANGUAGES, lookup, setLanguage, t, type Language } from './shared/i18n';
 import type { OverlayConfig } from './shared/overlay';
 
@@ -145,6 +147,7 @@ export default function App() {
   const [username, setUsername] = useState('');
   const [connection, setConnection] = useState<TikTokStatus>({ status: 'disconnected' });
   const [events, setEvents] = useState<LiveEvent[]>([]);
+  const [chatLog, setChatLog] = useState<ChatEntry[]>([]);
   /** Comments main skipped because the room sent more than the app processes per second. */
   const [skippedComments, setSkippedComments] = useState(0);
   const [playlist, setPlaylist] = useState<AudioTrack[]>([]);
@@ -508,7 +511,10 @@ export default function App() {
   /** One batch per ~100 ms from main: every event is processed, then React renders once. */
   const processBatch = useCallback((batch: LiveEventBatch) => {
     for (const event of batch.events) processLiveEvent(event);
-    if (batch.events.length) setEvents((old) => [...batch.events.slice(-120).reverse(), ...old].slice(0, 120));
+    if (batch.events.length) {
+      setEvents((old) => [...batch.events.slice(-120).reverse(), ...old].slice(0, 120));
+      setChatLog((old) => appendChatLog(old, batch.events));
+    }
     if (batch.dropped.chat) setSkippedComments((old) => old + batch.dropped.chat);
   }, [processLiveEvent]);
 
@@ -853,6 +859,17 @@ export default function App() {
               musicPreview={musicPreview}
               onPreviewMusic={setMusicPreview}
             />
+
+            <details className="panel fold-panel" open>
+              <summary>{t('💬 Lịch sử bình luận')} <small>{chatLog.length}</small></summary>
+              <ChatHistory
+                log={chatLog}
+                locale={locale(language)}
+                isHost={(user) => games.isHost(user, false)}
+                onClear={() => setChatLog([])}
+                onNotify={setLastAction}
+              />
+            </details>
 
             <details className="panel fold-panel">
               <summary>{t('📜 Nhật ký LIVE')} <small>{events.length}</small>{skippedComments ? <small className="overload-note">{t('⚠ phòng quá đông: bỏ qua {count} comment', { count: skippedComments.toLocaleString(locale(language)) })}</small> : null}</summary>

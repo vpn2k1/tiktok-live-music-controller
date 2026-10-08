@@ -1,7 +1,7 @@
 // Readable TikTok connection errors (src/shared/tiktokErrors.ts). Run with `npm test`.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { diagnoseConnectError, isTikTokUsername, TIKTOK_CAUSES, tiktokUsername } from '../src/shared/tiktokErrors';
+import { diagnoseConnectError, isRetryableSignError, isTikTokUsername, TIKTOK_CAUSES, tiktokUsername } from '../src/shared/tiktokErrors';
 
 // Same shapes as tiktok-live-connector 2.4 (class names matter for some checks).
 class InvalidResponseError extends Error {}
@@ -49,6 +49,20 @@ test('offline, network and unknown errors', () => {
   assert.ok(diagnoseConnectError(new Error('getaddrinfo ENOTFOUND www.tiktok.com')).startsWith(TIKTOK_CAUSES.network));
   assert.ok(diagnoseConnectError(composite(new InvalidResponseError('[fetchRoomInfoApiLiveRoute] Invalid response from API: {}'), EULER)).startsWith(TIKTOK_CAUSES.noRoom));
   assert.equal(diagnoseConnectError(new Error('Something else')), 'Something else');
+});
+
+test('sign server failures and rate limits get their own cause', () => {
+  const sign = diagnoseConnectError(new Error('[Sign Error] [fetchSignedWebSocketFromEulerRoute] Unexpected sign server status 500. Payload: {"fallback_message":"illegal web id"}'));
+  assert.ok(sign.startsWith(`${TIKTOK_CAUSES.signServer}: `), sign);
+  const limited = diagnoseConnectError(new Error('[Rate Limited] (rate_limit_account_minute) Too many connections started, try again later.'));
+  assert.ok(limited.startsWith(TIKTOK_CAUSES.rateLimited), limited);
+});
+
+test('only sign server failures are retried', () => {
+  assert.equal(isRetryableSignError(new Error('[Sign Error] [fetchSignedWebSocketFromEulerRoute] Unexpected sign server status 500. Payload: {"fallback_message":"illegal web id"}')), true);
+  assert.equal(isRetryableSignError(new Error('[Empty Cookies] [fetchSignedWebSocketFromEulerRoute] No cookies received from sign server.')), true);
+  assert.equal(isRetryableSignError(new Error('[Rate Limited] (rate_limit_account_minute) Too many connections started, try again later.')), false);
+  assert.equal(isRetryableSignError(new Error("The requested user isn't online :(")), false);
 });
 
 test('causes contain no ": " (the renderer splits cause and details there)', () => {

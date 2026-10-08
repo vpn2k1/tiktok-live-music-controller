@@ -21,7 +21,7 @@ import { aiStatus, generateAi, setAiKey, setAiSettings, testAi } from './ai';
 import { publishOverlay, startOverlayServer, stopOverlayServer } from './overlay-server';
 import { closeOverlayWindow, onOverlayWindowAction, onOverlayWindowChange, openOverlayWindow } from './overlay-window';
 import type { OverlayWindowAction } from '../src/shared/overlay';
-import { diagnoseConnectError, isTikTokUsername, tiktokUsername } from '../src/shared/tiktokErrors';
+import { diagnoseConnectError, isRetryableSignError, isTikTokUsername, tiktokUsername } from '../src/shared/tiktokErrors';
 import { avatarFromUser } from '../src/shared/avatar';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -57,6 +57,8 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 let mainWindow: BrowserWindow | null = null;
 let liveConnection: TikTokLiveConnection | null = null;
+/** Username of the latest Kết nối (cleared by Disconnect), so a retry stops when the streamer moves on. */
+let pendingUsername: string | null = null;
 const mediaFiles = new Map<string, string>();
 let overlayInfo: OverlayInfo = { url: null, error: 'Overlay server chưa khởi động.' };
 
@@ -175,6 +177,7 @@ function flushLiveEvents(): void {
 async function disconnectTikTok(): Promise<boolean> {
   const current = liveConnection;
   liveConnection = null;
+  pendingUsername = null;
 
   if (current) {
     try {
@@ -201,8 +204,57 @@ async function connectTikTok(rawUsername: string) {
   await disconnectTikTok();
   emitStatus('connecting', { username });
 
+  // Euler Stream's sign server sometimes answers 500 "illegal web id" for one
+  // connection; a new connection (new device id) usually gets through. Retry
+  // a few times, spaced out so the free tier's per-minute limit isn't hit.
+  for (let attempt = 1; ; attempt += 1) {
+    const connection = openConnection(username);
+    try {
+      const state = await connection.connect().finally(() => settled.add(connection));
+      if (liveConnection !== connection) {
+        connection.disconnect();
+        return { connected: false };
+      }
+      const record = asRecord(state);
+      console.log(`[tiktok] @${username}: connected (attempt ${attempt}, room ${stringValue(record.roomId)})`);
+      return {
+        connected: true,
+        roomId: stringValue(record.roomId) || null,
+        username
+      };
+    } catch (error) {
+      const current = liveConnection === connection;
+      if (current) liveConnection = null;
+      console.warn(`[tiktok] @${username}: connect attempt ${attempt}/${SIGN_RETRIES} failed: ${errorText(error).slice(0, 200)}`);
+      if (current && attempt < SIGN_RETRIES && isRetryableSignError(error)) {
+        emitStatus('connecting', { username, message: 'Máy chủ Euler Stream lỗi, đang thử lại ({n}/{max})…'.replace('{n}', String(attempt + 1)).replace('{max}', String(SIGN_RETRIES)) });
+        await new Promise((resolve) => setTimeout(resolve, SIGN_RETRY_DELAY_MS));
+        // The streamer pressed Disconnect / connected elsewhere meanwhile.
+        if (liveConnection !== null || pendingUsername !== username) return { connected: false };
+        continue;
+      }
+      // The connector's "Failed to retrieve Room ID from all sources." hides the real
+      // reason in error.config.requestErrs; show the cause and each source's detail.
+      const message = diagnoseConnectError(error);
+      if (current) emitStatus('error', { username, message });
+      throw new Error(message);
+    }
+  }
+}
+
+/** Connections whose connect() has finished (errors before that are connectTikTok's to report). */
+const settled = new WeakSet<TikTokLiveConnection>();
+// Euler Stream's free tier allows only a few sign requests a minute per network (failed ones
+// count too); with an API key (SIGN_API_KEY) the limit is higher, so retry more and sooner.
+const HAS_SIGN_KEY = Boolean(process.env.SIGN_API_KEY);
+const SIGN_RETRIES = HAS_SIGN_KEY ? 6 : 3;
+const SIGN_RETRY_DELAY_MS = HAS_SIGN_KEY ? 2000 : 6000;
+
+/** A new connection for `username` with every event wired; it becomes the current one. */
+function openConnection(username: string): TikTokLiveConnection {
   const connection = new TikTokLiveConnection(username, {});
   liveConnection = connection;
+  pendingUsername = username;
 
   connection.on(ControlEvent.CONNECTED, (state: unknown) => {
     if (liveConnection !== connection) return;
@@ -210,10 +262,19 @@ async function connectTikTok(rawUsername: string) {
     emitStatus('connected', { username, roomId: stringValue(record.roomId) || null });
   });
 
-  connection.on(ControlEvent.DISCONNECTED, () => {
-    if (liveConnection === connection) {
-      emitStatus('disconnected', { username });
-    }
+  connection.on(ControlEvent.DISCONNECTED, (info: unknown) => {
+    if (liveConnection !== connection) return;
+    // TikTok closed the LIVE WebSocket (not the streamer): say so, with its close code.
+    const record = asRecord(info);
+    const code = numberValue(record.code, 0);
+    const reason = stringValue(record.reason).slice(0, 120);
+    console.warn(`[tiktok] @${username}: connection closed by TikTok (code ${code}${reason ? `, ${reason}` : ''})`);
+    // "payload_handler_im_enter_room": TikTok refused to let the anonymous viewer into the room —
+    // a LIVE limited to chosen viewers (or friends), or a network TikTok flags as a bot.
+    const message = /im_enter_room/i.test(reason)
+      ? `TikTok không cho vào phòng LIVE. LIVE phải để chế độ Công khai: app xem như người xem chưa đăng nhập, nên LIVE chỉ cho người được chỉ định / bạn bè xem sẽ bị chặn. Nếu LIVE đã công khai, có thể mạng đang bị TikTok nghi là bot: đợi 15–30 phút hoặc thử mạng khác: ${reason}`
+      : `TikTok đã đóng kết nối LIVE (mã ${code}): ${reason || '—'}`;
+    emitStatus('disconnected', { username, message });
   });
 
   connection.on(ControlEvent.ERROR, (error: unknown) => {
@@ -226,6 +287,8 @@ async function connectTikTok(rawUsername: string) {
       emitStatus('connected', { username, message: 'Cảnh báo từ TikTok: {error}'.replace('{error}', () => errorText(error)) });
       return;
     }
+    // A failed connect() is reported by connectTikTok (which may retry it).
+    if (!settled.has(connection)) return;
     emitStatus('error', { username, message: error instanceof Error ? diagnoseConnectError(error) : errorText(error) });
   });
 
@@ -241,28 +304,7 @@ async function connectTikTok(rawUsername: string) {
   connection.on(WebcastEvent.LIKE, (data: unknown) => emitLiveEvent('like', data));
   connection.on(WebcastEvent.FOLLOW, (data: unknown) => emitLiveEvent('follow', data));
   connection.on(WebcastEvent.MEMBER, (data: unknown) => emitLiveEvent('join', data));
-
-  try {
-    const state = await connection.connect();
-    if (liveConnection !== connection) {
-      connection.disconnect();
-      return { connected: false };
-    }
-
-    const record = asRecord(state);
-    return {
-      connected: true,
-      roomId: stringValue(record.roomId) || null,
-      username
-    };
-  } catch (error) {
-    if (liveConnection === connection) liveConnection = null;
-    // The connector's "Failed to retrieve Room ID from all sources." hides the real
-    // reason in error.config.requestErrs; show the cause and each source's detail.
-    const message = diagnoseConnectError(error);
-    emitStatus('error', { username, message });
-    throw new Error(message);
-  }
+  return connection;
 }
 
 function createWindow(): void {

@@ -176,5 +176,20 @@ export const EN_UI: Record<string, string> = {
   'Key không đúng định dạng (dán lại, không có dấu cách).': 'The key format looks wrong (paste it again, without spaces).',
   'Tên model không hợp lệ.': 'Invalid model name.',
   'Thêm API key ở panel 🤖 AI tạo câu hỏi trước (Gemini, Groq hoặc Grok).': 'Add an API key in the 🤖 AI question maker panel first (Gemini, Groq or Grok).',
-  'API key {provider}': '{provider} API key'
+  'API key {provider}': '{provider} API key',
+
+  // Comment history (ChatHistory.tsx)
+  '💬 Lịch sử bình luận': '💬 Comment history',
+  'Tìm theo tên hoặc nội dung…': 'Search by name or text…',
+  'Chỉ bình luận': 'Comments only',
+  'Xuất .txt': 'Export .txt',
+  'Không có bình luận nào khớp.': 'No matching comments.',
+  'Bình luận trong LIVE sẽ hiện ở đây theo thời gian.': 'LIVE comments will appear here over time.',
+  'Đang hiện {shown}/{total} dòng mới nhất': 'Showing the newest {shown}/{total} lines',
+  '{count} dòng': '{count} lines',
+  '↓ {count} bình luận mới': '↓ {count} new comments',
+  '🎁 tặng': '🎁 sent',
+  '➕ đã follow': '➕ followed',
+  'Đã lưu {count} dòng bình luận.': 'Saved {count} comment lines.',
+  'Không lưu được file: {error}': 'Could not save the file: {error}'
 };

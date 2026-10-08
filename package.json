@@ -20,7 +20,7 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "tiktok-live-connector": "^2.4.3"
+    "tiktok-live-connector": "^2.5.0"
   },
   "devDependencies": {
     "@fontsource-variable/baloo-2": "^5.3.0",
