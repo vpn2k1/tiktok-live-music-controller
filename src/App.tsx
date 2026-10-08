@@ -5,17 +5,21 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type FormEvent,
-  type KeyboardEvent
+  type FormEvent
 } from 'react';
 import AiPanel from './components/AiPanel';
-import AutoPlayPanel from './components/AutoPlayPanel';
+import AutoPlaySettingsPanel, { AutoPlayStatus } from './components/AutoPlayPanel';
 import FeaturesPanel from './components/FeaturesPanel';
 import GameLibrary from './components/GameLibrary';
-import GamePanel from './components/GamePanel';
+import { GameSettingsForm, LeaderboardCard, LiveGameCard, TestTools } from './components/GameParts';
+import { GameDetailsModal, StartModal, type GameActions } from './components/GamePopups';
+import Modal from './components/Modal';
 import OverlayPanel from './components/OverlayPanel';
+import QuickStart from './components/QuickStart';
+import { ConnectModal, SignKeyField } from './components/TikTokConnect';
 import Panel from './components/Panel';
 import Toggle from './components/Toggle';
+import { groupLabel } from './game/autoplay';
 import { remainingMs, topScores } from './game/engine';
 import { musicCue } from './game/music';
 import { getGame } from './game/registry';
@@ -83,6 +87,43 @@ function loadRules(): MusicRules {
   }
 }
 
+/** Sidebar tabs (labels are Vietnamese source texts). */
+const TABS = [
+  { id: 'control', icon: '🏠', label: 'Trang chính' },
+  { id: 'library', icon: '📚', label: 'Game' },
+  { id: 'chat', icon: '💬', label: 'Bình luận' },
+  { id: 'music', icon: '🎵', label: 'Nhạc' },
+  { id: 'settings', icon: '⚙️', label: 'Cài đặt' }
+] as const;
+
+type AppTab = (typeof TABS)[number]['id'];
+
+/** Sections of the Cài đặt tab. */
+const SETTINGS_TABS = [
+  { id: 'general', label: '🔊 Chung' },
+  { id: 'auto', label: '🔁 Tự động' },
+  { id: 'obs', label: '📺 OBS' },
+  { id: 'ai', label: '🤖 AI' },
+  { id: 'tiktok', label: '🔑 TikTok' }
+] as const;
+
+type SettingsTab = (typeof SETTINGS_TABS)[number]['id'];
+
+function loadTab(): AppTab {
+  try {
+    const saved = localStorage.getItem('app-tab');
+    // Older versions: "game" (now home), separate auto / OBS tabs (now in Cài đặt).
+    if (saved === 'game') return 'control';
+    if (saved === 'auto' || saved === 'overlay') return 'settings';
+    return TABS.find((item) => item.id === saved)?.id ?? 'control';
+  } catch {
+    return 'control';
+  }
+}
+
+/** The open popup, if any. */
+type Popup = { kind: 'start' } | { kind: 'game'; id: string } | { kind: 'tests' } | { kind: 'connect' };
+
 const UI_ZOOM_STEPS = [0.9, 1, 1.1, 1.2, 1.3, 1.45, 1.6];
 const DEFAULT_UI_ZOOM = 1.2;
 
@@ -137,7 +178,7 @@ function locale(language: Language): string {
   return language === 'en' ? 'en-US' : 'vi-VN';
 }
 
-const FIRST_ACTION = 'Chọn game rồi bấm ▶ Bắt đầu, hoặc 🤖 Chạy thử để xem overlay.';
+const FIRST_ACTION = 'Làm theo 3 bước ở 🏠 Trang chính: kết nối TikTok → đưa game lên OBS → bấm ▶ Tự chơi.';
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -173,13 +214,9 @@ export default function App() {
       return DEFAULT_UI_ZOOM;
     }
   });
-  const [tab, setTab] = useState<'game' | 'music'>(() => {
-    try {
-      return localStorage.getItem('app-tab') === 'music' ? 'music' : 'game';
-    } catch {
-      return 'game';
-    }
-  });
+  const [tab, setTab] = useState<AppTab>(loadTab);
+  const [popup, setPopup] = useState<Popup | null>(null);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   // Filled once useWelcomeAlerts exists; the game hook calls it for !rank / !help replies.
   const notifyRef = useRef<(message: string) => void>(() => undefined);
 
@@ -448,10 +485,10 @@ export default function App() {
       : s.switchBy === 'time' ? t('đổi game sau {count} phút', { count: s.switchMinutes })
         : t('mỗi game chơi mãi đến khi có lệnh đổi game');
     const how = s.lobbyEnabled ? t('viewer bầu chọn game tiếp theo, {per}', { per }) : `${t(s.order === 'random' ? 'ngẫu nhiên' : 'lần lượt')}, ${per}`;
-    const panel = t('🎮 Chọn & chuyển game');
+    const panel = `${t('⚙️ Cài đặt')} → ${t('🔁 Tự động')}`;
     return s.liveMinutes
-      ? t('{how}, dừng sau {minutes} phút (chỉnh ở panel {panel})', { how, minutes: s.liveMinutes, panel })
-      : t('{how} (chỉnh ở panel {panel})', { how, panel });
+      ? t('{how}, dừng sau {minutes} phút (chỉnh ở tab {panel})', { how, minutes: s.liveMinutes, panel })
+      : t('{how} (chỉnh ở tab {panel})', { how, panel });
   })();
   const overlayState = useMemo<Omit<OverlayState, 'updatedAt'>>(() => {
     const state = {
@@ -607,10 +644,6 @@ export default function App() {
     await window.desktop.disconnectTikTok();
   }
 
-  function handleUsernameKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
-    if (event.key === 'Enter') void connect();
-  }
-
   function updateRule<K extends keyof MusicRules>(key: K, value: MusicRules[K]): void {
     setRules((old) => ({ ...old, [key]: value }));
   }
@@ -626,9 +659,9 @@ export default function App() {
     else simulate({ type: 'gift', user, giftName: input.giftName, count: input.count });
   }
 
-  /** "Chạy thử": start the selected game (if idle) and let the demo bot play it. */
-  function runDemo(): void {
-    if (games.game.phase !== 'running' && !games.start()) return;
+  /** "Chạy thử": start the game (if idle) and let the demo bot play it. */
+  function runDemo(id?: string): void {
+    if (games.game.phase !== 'running' && !games.start(id)) return;
     bot.setEnabled(true);
   }
 
@@ -684,6 +717,71 @@ export default function App() {
     [overlayInfo, language]
   );
 
+  const gameActions: GameActions = {
+    onPlay: (id) => {
+      games.start(id);
+    },
+    onDemo: testVisible ? (id) => runDemo(id) : null,
+    onSwitchTo: autoPlay.switchTo
+  };
+  const popupGame = popup?.kind === 'game' ? games.games.find((item) => item.id === popup.id) : undefined;
+  const connectionMessage = connection.message ? translateMainMessage(connection.message) : null;
+  const extraTestTools = (
+    <>
+      <span className="fold-label">{t('Lệnh chung & sự kiện')}</span>
+      <div className="check-row">
+        {['!start', '!stop', '!help', '!rank', '!join', '!doigame', '1', '2'].map((command) => (
+          <button key={command} className="chip" onClick={() => simulate({ type: 'chat', user: randomViewer(GAME_TEST_VIEWERS), comment: command })}>{command}</button>
+        ))}
+        <button className="chip" onClick={() => simulate({ type: 'like', user: randomViewer(GAME_TEST_VIEWERS), count: 20 })}>{t('+20 tim')}</button>
+        <button className="chip" onClick={() => simulate({ type: 'gift', user: randomViewer(GAME_TEST_VIEWERS), giftName: 'Rose', count: 1 })}>Rose</button>
+        {giftSwitchEnabled && switchGiftName.trim() ? (
+          <button className="chip" onClick={() => simulate({ type: 'gift', user: randomViewer(GAME_TEST_VIEWERS), giftName: switchGiftName.trim(), count: switchGiftCount })}>🎁 {switchGiftCount} {switchGiftName.trim()} {t('(đổi game)')}</button>
+        ) : null}
+        <button className="chip" onClick={() => simulate({ type: 'follow', user: randomViewer() })}>follow</button>
+        <button className="chip" onClick={() => simulate({ type: 'join', user: randomViewer() })}>{t('vào phòng')}</button>
+      </div>
+      <form className="test-comment" onSubmit={sendTestComment}>
+        <input
+          className="text-input"
+          value={testComment}
+          maxLength={150}
+          onChange={(event) => setTestComment(event.target.value)}
+          placeholder={t('Gõ comment thử (vd: apple, 42, A)')}
+        />
+        <button className="button" type="submit">{t('Gửi')}</button>
+      </form>
+    </>
+  );
+  const settingsFormFor = (id: string) => {
+    const target = games.games.find((item) => item.id === id);
+    if (!target) return null;
+    return (
+      <GameSettingsForm
+        game={target}
+        raw={games.rawConfigs[id] ?? {}}
+        locked={game.phase === 'running' && game.kind === id}
+        onConfigChange={games.setConfigValue}
+        onResetConfig={games.resetConfig}
+        dictionaries={{ vi: games.dictionary, en: games.englishDictionary }}
+        onImportDictionary={(dictionary, text) => setLastAction(t('Đã nhập {count} từ vào từ điển {language}', {
+          count: games.importDictionary(dictionary, text),
+          language: t(dictionary === 'vi' ? 'tiếng Việt' : 'tiếng Anh')
+        }))}
+        onClearDictionary={games.clearDictionary}
+        ai={ai}
+      />
+    );
+  };
+  /** Home shows the 3 steps until a game runs (or the auto run is on). */
+  const showQuickStart = game.phase === 'idle' && !autoPlay.session && !autoPlay.loop;
+  const activeGroupNow = autoPlay.settings.groups.find((item) => item.id === autoPlay.settings.activeGroupId) ?? autoPlay.settings.groups[0];
+  const badges: Partial<Record<AppTab, string | number>> = {
+    ...(game.phase === 'running' || autoPlay.session ? { control: '●' } : {}),
+    ...(chatLog.length ? { chat: chatLog.length > 999 ? '999+' : chatLog.length } : {}),
+    ...(playing ? { music: '▶' } : {})
+  };
+
   return (
     <div className="app-shell">
       <input
@@ -704,10 +802,17 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-controls">
-          <nav className="tabs" aria-label={t('Chế độ')}>
-            <button className={tab === 'game' ? 'active' : ''} onClick={() => setTab('game')}>🎮 Game</button>
-            <button className={tab === 'music' ? 'active' : ''} onClick={() => setTab('music')}>{t('🎵 Nhạc')}{playing ? ' ▶' : ''}</button>
-          </nav>
+          <button
+            className={`status-pill status-button ${connection.status}`}
+            onClick={() => setPopup({ kind: 'connect' })}
+            title={t('Kết nối TikTok LIVE')}
+            aria-haspopup="dialog"
+          >
+            <span className="status-dot" />
+            {connectionText}
+            {connection.status === 'connected' && connection.username ? <strong>@{connection.username}</strong> : null}
+            {connection.status === 'disconnected' || connection.status === 'error' ? <span className="status-action">{t('Kết nối')}</span> : null}
+          </button>
           <div className="zoom-control" role="group" aria-label={t('Cỡ chữ giao diện')}>
             <button onClick={() => stepZoom(-1)} disabled={uiZoom <= UI_ZOOM_STEPS[0]!} title={t('Chữ nhỏ hơn')}>A−</button>
             <span>{Math.round(uiZoom * 100)}%</span>
@@ -720,50 +825,106 @@ export default function App() {
               </button>
             ))}
           </div>
-          <div className={`status-pill ${connection.status}`}>
-            <span className="status-dot" />
-            {connectionText}
-          </div>
         </div>
       </header>
       <div className="status-strip" role="status">{lastAction ?? t(FIRST_ACTION)}</div>
 
-      {/* Both tabs stay mounted so music keeps playing while the Game tab is open. */}
-      <div hidden={tab !== 'game'}>
-        <main className="dashboard-grid game-dashboard">
-          <div className="main-column">
-            <Panel title={t('① Kết nối TikTok')} aside={connection.roomId ? `Room ${connection.roomId}` : null}>
-              <div className="connect-row">
-                <input
-                  className="text-input"
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder={t('@username đang LIVE')}
-                  onKeyDown={handleUsernameKeyDown}
-                />
-                {connection.status === 'connected' || connection.status === 'connecting' ? (
-                  <button className="button" onClick={() => void disconnect()}>{t('Ngắt kết nối')}</button>
-                ) : (
-                  <button className="button primary" onClick={() => void connect()}>{t('Kết nối')}</button>
-                )}
-              </div>
-              {connection.message ? <p className="error-text">{translateMainMessage(connection.message)}</p> : null}
-              {connection.status === 'connected' ? (
-                testVisible ? (
-                  <p className="error-text">{t('Đang LIVE: công cụ test đang bật, event test sẽ tác động lên game thật.')} <button className="link-button" onClick={() => setShowTestTools(false)}>{t('Ẩn')}</button></p>
-                ) : (
-                  <button className="link-button" onClick={() => setShowTestTools(true)}>{t('Hiện công cụ test')}</button>
-                )
-              ) : (
-                <p className="field-hint">{t('Chưa LIVE vẫn thử được: chọn game rồi bấm 🤖 Chạy thử.')}</p>
-              )}
-            </Panel>
+      <div className="app-body">
+        <nav className="side-nav" aria-label={t('Chế độ')}>
+          {TABS.map((item) => (
+            <button key={item.id} className={tab === item.id ? 'active' : ''} aria-current={tab === item.id ? 'page' : undefined} onClick={() => setTab(item.id)}>
+              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+              <span className="nav-label">{t(item.label)}</span>
+              {badges[item.id] != null ? <span className={`nav-badge ${typeof badges[item.id] === 'number' ? 'count' : ''}`}>{badges[item.id]}</span> : null}
+            </button>
+          ))}
+        </nav>
 
+        {/* Every page stays mounted (hidden), so music keeps playing and forms keep their state. */}
+        <div className="tab-pages">
+          <main hidden={tab !== 'control'} className={showQuickStart && !overlayState.leaderboard.length ? 'page-narrow' : 'dashboard-grid'}>
+            <div className="main-column">
+              {showQuickStart ? (
+                <QuickStart
+                  status={connection.status}
+                  username={username}
+                  onUsernameChange={setUsername}
+                  onConnect={() => void connect()}
+                  onDisconnect={() => void disconnect()}
+                  connectMessage={connectionMessage}
+                  onOpenConnect={() => setPopup({ kind: 'connect' })}
+                  connectedAs={connection.username ?? null}
+                  overlayUrl={translatedOverlayInfo.url}
+                  overlayError={translatedOverlayInfo.error ?? null}
+                  windowOpen={overlayWindowOpen}
+                  onOpenWindow={openOverlayWindow}
+                  onAction={setLastAction}
+                  onOpenObsSettings={() => {
+                    setSettingsTab('obs');
+                    setTab('settings');
+                  }}
+                  groupName={groupLabel(activeGroupNow)}
+                  groupSize={activeGroupNow?.gameIds.length ?? games.games.length}
+                  runHint={runHint}
+                  onRunGroup={autoPlay.begin}
+                  onPickGame={() => setPopup({ kind: 'start' })}
+                  onDemo={testVisible ? () => runDemo() : null}
+                />
+              ) : (
+                <>
+                  {connection.status !== 'connected' ? (
+                    <div className={`connect-banner ${connection.status}`}>
+                      <span>{connection.status === 'connecting' ? t('📡 Đang kết nối TikTok…') : t('📡 Chưa kết nối TikTok LIVE.')} {connectionMessage ? <span className="error-text">{connectionMessage}</span> : null}</span>
+                      <button className="button primary small" onClick={() => setPopup({ kind: 'connect' })}>{t('Kết nối')}</button>
+                    </div>
+                  ) : null}
+                  <LiveGameCard
+                    games={games.games}
+                    selectedId={games.selectedId}
+                    game={game}
+                    view={gameView}
+                    remainingMs={remainingMs(game, now)}
+                    bot={bot}
+                    onOpenStart={() => setPopup({ kind: 'start' })}
+                    onFinish={games.finish}
+                    onCancel={games.cancel}
+                    onOpenTests={testVisible ? () => setPopup({ kind: 'tests' }) : null}
+                  />
+                </>
+              )}
+              {!showQuickStart || autoPlay.lobby ? (
+                <AutoPlayStatus
+                  games={games.games}
+                  settings={autoPlay.settings}
+                  session={autoPlay.session}
+                  loop={autoPlay.loop}
+                  gift={autoPlay.gift}
+                  onBegin={autoPlay.begin}
+                  onStop={autoPlay.stop}
+                  onSkip={autoPlay.skip}
+                  onSwitchLater={autoPlay.switchLater}
+                  onExtend={autoPlay.extend}
+                  lobby={autoPlay.lobby}
+                  onResolveLobby={autoPlay.resolveLobby}
+                />
+              ) : null}
+            </div>
+            {showQuickStart && !overlayState.leaderboard.length ? null : (
+              <aside className="side-column">
+                <LeaderboardCard leaderboard={overlayState.leaderboard} onReset={games.resetScores} />
+              </aside>
+            )}
+          </main>
+
+          <main hidden={tab !== 'library'} className="page-single">
             <GameLibrary
               games={games.games}
               selectedId={games.selectedId}
               runningId={game.phase === 'running' ? game.kind : null}
-              onSelect={games.setSelectedId}
+              onOpen={(id) => {
+                games.setSelectedId(id);
+                setPopup({ kind: 'game', id });
+              }}
               groups={autoPlay.settings.groups}
               activeGroupId={autoPlay.settings.activeGroupId}
               onGroupsChange={autoPlay.setSettings}
@@ -772,96 +933,11 @@ export default function App() {
               onRun={autoPlay.begin}
               onStopRun={autoPlay.stop}
             />
+          </main>
 
-            <AutoPlayPanel
-              games={games.games}
-              settings={autoPlay.settings}
-              onChange={autoPlay.setSettings}
-              session={autoPlay.session}
-              loop={autoPlay.loop}
-              gift={autoPlay.gift}
-              onBegin={autoPlay.begin}
-              onStop={autoPlay.stop}
-              onSkip={autoPlay.skip}
-              onSwitchLater={autoPlay.switchLater}
-              onExtend={autoPlay.extend}
-              lobby={autoPlay.lobby}
-              onResolveLobby={autoPlay.resolveLobby}
-            />
-          </div>
-
-          <aside className="side-column">
-            <GamePanel
-              games={games.games}
-              selectedId={games.selectedId}
-              rawConfigs={games.rawConfigs}
-              onConfigChange={games.setConfigValue}
-              onResetConfig={games.resetConfig}
-              game={game}
-              view={gameView}
-              remainingMs={remainingMs(game, now)}
-              leaderboard={overlayState.leaderboard}
-              onStart={() => { games.start(); }}
-              onSwitchTo={autoPlay.switchTo}
-              onFinish={games.finish}
-              onCancel={games.cancel}
-              onResetScores={games.resetScores}
-              dictionaries={{ vi: games.dictionary, en: games.englishDictionary }}
-              onImportDictionary={(dictionary, text) => setLastAction(t('Đã nhập {count} từ vào từ điển {language}', {
-                count: games.importDictionary(dictionary, text),
-                language: t(dictionary === 'vi' ? 'tiếng Việt' : 'tiếng Anh')
-              }))}
-              onClearDictionary={games.clearDictionary}
-              testVisible={testVisible}
-              testActions={games.testActions}
-              onTest={sendGameTest}
-              bot={bot}
-              onDemo={runDemo}
-              ai={ai}
-              extraTestTools={(
-                <>
-                  <span className="fold-label">{t('Lệnh chung & sự kiện')}</span>
-                  <div className="check-row">
-                    {['!start', '!stop', '!help', '!rank', '!join', '!doigame', '1', '2'].map((command) => (
-                      <button key={command} className="chip" onClick={() => simulate({ type: 'chat', user: randomViewer(GAME_TEST_VIEWERS), comment: command })}>{command}</button>
-                    ))}
-                    <button className="chip" onClick={() => simulate({ type: 'like', user: randomViewer(GAME_TEST_VIEWERS), count: 20 })}>{t('+20 tim')}</button>
-                    <button className="chip" onClick={() => simulate({ type: 'gift', user: randomViewer(GAME_TEST_VIEWERS), giftName: 'Rose', count: 1 })}>Rose</button>
-                    {giftSwitchEnabled && switchGiftName.trim() ? (
-                      <button className="chip" onClick={() => simulate({ type: 'gift', user: randomViewer(GAME_TEST_VIEWERS), giftName: switchGiftName.trim(), count: switchGiftCount })}>🎁 {switchGiftCount} {switchGiftName.trim()} {t('(đổi game)')}</button>
-                    ) : null}
-                    <button className="chip" onClick={() => simulate({ type: 'follow', user: randomViewer() })}>follow</button>
-                    <button className="chip" onClick={() => simulate({ type: 'join', user: randomViewer() })}>{t('vào phòng')}</button>
-                  </div>
-                  <form className="test-comment" onSubmit={sendTestComment}>
-                    <input
-                      className="text-input"
-                      value={testComment}
-                      maxLength={150}
-                      onChange={(event) => setTestComment(event.target.value)}
-                      placeholder={t('Gõ comment thử (vd: apple, 42, A)')}
-                    />
-                    <button className="button" type="submit">{t('Gửi')}</button>
-                  </form>
-                </>
-              )}
-            />
-
-            <OverlayPanel info={translatedOverlayInfo} onAction={setLastAction} onOpenWindow={openOverlayWindow} windowOpen={overlayWindowOpen} onCloseWindow={closeOverlayWindow} />
-            <AiPanel ai={ai} />
-
-            <FeaturesPanel
-              features={games.features}
-              onChange={games.setFeatures}
-              cooldownSeconds={rules.commentCooldownSeconds}
-              onCooldownChange={(seconds) => updateRule('commentCooldownSeconds', seconds)}
-              hostUsername={hostUsername}
-              musicPreview={musicPreview}
-              onPreviewMusic={setMusicPreview}
-            />
-
-            <details className="panel fold-panel" open>
-              <summary>{t('💬 Lịch sử bình luận')} <small>{chatLog.length}</small></summary>
+          <main hidden={tab !== 'chat'} className="dashboard-grid even">
+            <section className="panel">
+              <header className="panel-header"><h2>{t('💬 Lịch sử bình luận')}</h2><div className="panel-aside">{chatLog.length}</div></header>
               <ChatHistory
                 log={chatLog}
                 locale={locale(language)}
@@ -869,10 +945,15 @@ export default function App() {
                 onClear={() => setChatLog([])}
                 onNotify={setLastAction}
               />
-            </details>
-
-            <details className="panel fold-panel">
-              <summary>{t('📜 Nhật ký LIVE')} <small>{events.length}</small>{skippedComments ? <small className="overload-note">{t('⚠ phòng quá đông: bỏ qua {count} comment', { count: skippedComments.toLocaleString(locale(language)) })}</small> : null}</summary>
+            </section>
+            <section className="panel">
+              <header className="panel-header">
+                <h2>{t('📜 Nhật ký LIVE')}</h2>
+                <div className="panel-aside">
+                  {events.length}
+                  {skippedComments ? <small className="overload-note">{t('⚠ phòng quá đông: bỏ qua {count} comment', { count: skippedComments.toLocaleString(locale(language)) })}</small> : null}
+                </div>
+              </header>
               <div className="events-list">
                 {!events.length ? (
                   <p className="empty-copy">{t('Comment, tim, gift… sẽ hiện ở đây.')}</p>
@@ -887,12 +968,10 @@ export default function App() {
                   </div>
                 ))}
               </div>
-            </details>
-          </aside>
-        </main>
-      </div>
+            </section>
+          </main>
 
-      <div hidden={tab !== 'music'}>
+          <div hidden={tab !== 'music'}>
         <main className="dashboard-grid">
           <div className="main-column">
             <Panel title="Music Player" aside={currentTrack?.name || t('Chưa chọn bài')}>
@@ -1058,7 +1137,91 @@ export default function App() {
             </Panel>
           </aside>
         </main>
+          </div>
+
+          <main hidden={tab !== 'settings'} className="page-narrow">
+            <div className="segmented settings-tabs" role="tablist" aria-label={t('Cài đặt')}>
+              {SETTINGS_TABS.map((item) => (
+                <button key={item.id} role="tab" aria-selected={settingsTab === item.id} className={settingsTab === item.id ? 'active' : ''} onClick={() => setSettingsTab(item.id)}>
+                  {t(item.label)}
+                </button>
+              ))}
+            </div>
+            <div hidden={settingsTab !== 'general'}>
+              <FeaturesPanel
+                features={games.features}
+                onChange={games.setFeatures}
+                cooldownSeconds={rules.commentCooldownSeconds}
+                onCooldownChange={(seconds) => updateRule('commentCooldownSeconds', seconds)}
+                hostUsername={hostUsername}
+                musicPreview={musicPreview}
+                onPreviewMusic={setMusicPreview}
+              />
+            </div>
+            <div hidden={settingsTab !== 'auto'}>
+              <AutoPlaySettingsPanel
+                games={games.games}
+                settings={autoPlay.settings}
+                onChange={autoPlay.setSettings}
+                session={autoPlay.session}
+                gift={autoPlay.gift}
+              />
+            </div>
+            <div hidden={settingsTab !== 'obs'}>
+              <OverlayPanel info={translatedOverlayInfo} onAction={setLastAction} onOpenWindow={openOverlayWindow} windowOpen={overlayWindowOpen} onCloseWindow={closeOverlayWindow} />
+            </div>
+            <div hidden={settingsTab !== 'ai'}>
+              <AiPanel ai={ai} />
+            </div>
+            <div hidden={settingsTab !== 'tiktok'}>
+              <Panel title={t('🔑 Kết nối TikTok')}>
+                <SignKeyField />
+              </Panel>
+            </div>
+          </main>
+        </div>
       </div>
+
+      {popup?.kind === 'start' ? (
+        <StartModal
+          games={games.games}
+          groups={autoPlay.settings.groups}
+          activeGroupId={autoPlay.settings.activeGroupId}
+          onGroupChange={(id) => autoPlay.setSettings({ activeGroupId: id })}
+          selectedId={games.selectedId}
+          onSelect={games.setSelectedId}
+          round={game}
+          actions={gameActions}
+          onOpenSettings={(id) => setPopup({ kind: 'game', id })}
+          autoRunning={autoPlay.session != null}
+          runHint={runHint}
+          onRunGroup={autoPlay.begin}
+          onStopRun={autoPlay.stop}
+          onClose={() => setPopup(null)}
+        />
+      ) : null}
+      {popupGame ? (
+        <GameDetailsModal game={popupGame} round={game} actions={gameActions} settings={settingsFormFor(popupGame.id)} onClose={() => setPopup(null)} />
+      ) : null}
+      {popup?.kind === 'tests' ? (
+        <Modal title={t('🧪 Công cụ test')} onClose={() => setPopup(null)}>
+          <TestTools running={game.phase === 'running'} testActions={games.testActions} onTest={sendGameTest} bot={bot} extra={extraTestTools} />
+        </Modal>
+      ) : null}
+      {popup?.kind === 'connect' ? (
+        <ConnectModal
+          username={username}
+          onUsernameChange={setUsername}
+          status={connection.status}
+          roomId={connection.roomId}
+          message={connectionMessage}
+          onConnect={() => void connect()}
+          onDisconnect={() => void disconnect()}
+          testVisible={testVisible}
+          onShowTestTools={setShowTestTools}
+          onClose={() => setPopup(null)}
+        />
+      ) : null}
     </div>
   );
 }

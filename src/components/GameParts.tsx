@@ -11,38 +11,6 @@ import { numberLocale, t } from '../shared/i18n';
 import AiBankBox from './AiBankBox';
 import Panel from './Panel';
 
-interface GamePanelProps {
-  games: AnyGame[];
-  selectedId: string;
-  rawConfigs: Record<string, Partial<GameConfig>>;
-  onConfigChange: (id: string, key: string, value: string | number) => void;
-  onResetConfig: (id: string) => void;
-  game: GameState;
-  view: OverlayGameView;
-  remainingMs: number;
-  leaderboard: ScoreEntry[];
-  onStart: () => void;
-  /** Host switches to another game now (the running round ends, its points count). */
-  onSwitchTo: (id: string) => void;
-  onFinish: () => void;
-  onCancel: () => void;
-  onResetScores: () => void;
-  dictionaries: Record<DictionaryLanguage, { builtinCount: number; importedCount: number }>;
-  onImportDictionary: (language: DictionaryLanguage, text: string) => void;
-  onClearDictionary: (language: DictionaryLanguage) => void;
-  /** Test tools + "Chạy thử" are only offered while TikTok isn't connected (or on request). */
-  testVisible: boolean;
-  testActions: TestAction[];
-  onTest: (input: TestInput) => void;
-  bot: DemoBot;
-  /** "Chạy thử": start with the demo bot. */
-  onDemo: () => void;
-  /** Extra generic test controls (follow/join/free comment) rendered inside the Test section. */
-  extraTestTools: ReactNode;
-  /** AI generation for question/word banks. */
-  ai: AiControl;
-}
-
 const MAX_DICTIONARY_BYTES = 20 * 1024 * 1024;
 /** Question/word bank files (the field itself keeps up to its maxLength characters). */
 const MAX_BANK_FILE_BYTES = 2 * 1024 * 1024;
@@ -281,18 +249,99 @@ function RoundStatus({ game, view }: { game: GameState; view: OverlayGameView })
   );
 }
 
-export default function GamePanel(props: GamePanelProps) {
+/** The game a round is running, or else the selected one. */
+export function activeGameOf(games: AnyGame[], game: GameState, selectedId: string): AnyGame | undefined {
+  const id = game.phase === 'running' && game.kind ? game.kind : selectedId;
+  return games.find((item) => item.id === id) ?? games[0];
+}
+
+/** What viewers type for a game (chips). */
+export function CommandList({ game }: { game: AnyGame }) {
+  return (
+    <div className="command-list">
+      {game.commands.map((command) => (
+        <span key={command.usage}><code>{t(command.usage)}</code> {t(command.description)}</span>
+      ))}
+    </div>
+  );
+}
+
+interface LiveGameCardProps {
+  games: AnyGame[];
+  selectedId: string;
+  game: GameState;
+  view: OverlayGameView;
+  remainingMs: number;
+  bot: DemoBot;
+  /** Opens the start popup (pick a game, run it or the group). */
+  onOpenStart: () => void;
+  onFinish: () => void;
+  onCancel: () => void;
+  /** Opens the test tools popup (null while LIVE without test tools). */
+  onOpenTests: (() => void) | null;
+}
+
+/** Control tab: the round on air (countdown, end / cancel, live view) or a big start button. */
+export function LiveGameCard(props: LiveGameCardProps) {
   const { game, view, bot } = props;
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const running = game.phase === 'running';
-  const activeId = running && game.kind ? game.kind : props.selectedId;
-  const active = props.games.find((item) => item.id === activeId) ?? props.games[0];
-  const raw = props.rawConfigs[active?.id ?? ''] ?? {};
-  const dictionaryLanguage = active ? DICTIONARY_GAMES[active.id] : undefined;
-  const dictionaryInfo = dictionaryLanguage ? props.dictionaries[dictionaryLanguage] : null;
+  const active = activeGameOf(props.games, game, props.selectedId);
+  if (!active) return null;
   const demoRunning = running && bot.enabled;
-  /** Picked in the library while another game runs: offer to switch to it. */
-  const picked = running && props.selectedId !== game.kind ? props.games.find((item) => item.id === props.selectedId) : undefined;
+
+  return (
+    <Panel
+      title={game.phase === 'idle' ? t('🎮 Chưa có game nào chạy') : `🎮 ${t(active.title)}`}
+      aside={running ? <span className="live-badge">{t('● Đang chơi')}</span> : game.phase === 'ended' ? t('Vừa kết thúc') : null}
+    >
+      <div className="game-stack">
+        <div className="control-bar">
+          {running ? (
+            <>
+              <span className="countdown big">{game.endsAt == null ? 'LIVE' : formatCountdown(props.remainingMs)}</span>
+              <button className="button primary" onClick={() => props.onFinish()} title={t('Chốt ván này; game tự chơi tiếp ván mới')}>{t('⏹ Chốt kết quả')}</button>
+              <button className="button" onClick={props.onCancel} title={t('Huỷ ván này và dừng game')}>{t('✕ Huỷ')}</button>
+              <button className="button" onClick={props.onOpenStart}>{t('⏭ Đổi game')}</button>
+              {demoRunning ? <button className="button ghost" onClick={() => bot.setEnabled(false)}>{t('Tắt bot')}</button> : null}
+            </>
+          ) : (
+            <button className="button primary large" onClick={props.onOpenStart}>{t('▶ Bắt đầu game')}</button>
+          )}
+          {props.onOpenTests ? <button className="button ghost" onClick={props.onOpenTests}>{t('🧪 Test')}</button> : null}
+        </div>
+
+        {game.phase !== 'idle' ? (
+          <>
+            <RoundStatus game={game} view={view} />
+            <CommandList game={active} />
+          </>
+        ) : (
+          <p className="empty-copy flush">{t('Bấm ▶ Bắt đầu game để chọn game và chơi, hoặc bật chạy tự động cả nhóm game.')}</p>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+interface GameSettingsFormProps {
+  game: AnyGame;
+  raw: Partial<GameConfig>;
+  /** Settings are locked while this game's round runs. */
+  locked: boolean;
+  onConfigChange: (id: string, key: string, value: string | number) => void;
+  onResetConfig: (id: string) => void;
+  dictionaries: Record<DictionaryLanguage, { builtinCount: number; importedCount: number }>;
+  onImportDictionary: (language: DictionaryLanguage, text: string) => void;
+  onClearDictionary: (language: DictionaryLanguage) => void;
+  ai: AiControl;
+}
+
+/** A game's settings (banks with file import / AI, word list for word chains, reset). */
+export function GameSettingsForm(props: GameSettingsFormProps) {
+  const { game, raw, locked } = props;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dictionaryLanguage = DICTIONARY_GAMES[game.id];
+  const dictionaryInfo = dictionaryLanguage ? props.dictionaries[dictionaryLanguage] : null;
 
   async function handleDictionaryFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
@@ -301,120 +350,97 @@ export default function GamePanel(props: GamePanelProps) {
     props.onImportDictionary(dictionaryLanguage, await file.text());
   }
 
-  if (!active) return null;
-
   return (
-    <Panel title={`③ ${t(active.title)}`} aside={running ? <span className="live-badge">{t('● Đang chơi')}</span> : game.phase === 'ended' ? t('Vừa kết thúc') : t('Sẵn sàng')}>
-      <div className="game-stack">
-        <div className="control-bar">
-          {running ? (
-            <>
-              <span className="countdown big">{game.endsAt == null ? 'LIVE' : formatCountdown(props.remainingMs)}</span>
-              <button className="button primary" onClick={() => props.onFinish()} title={t('Chốt ván này; game tự chơi tiếp ván mới')}>{t('⏹ Chốt kết quả')}</button>
-              <button className="button" onClick={props.onCancel} title={t('Huỷ ván này và dừng game')}>{t('✕ Huỷ')}</button>
-              {picked ? <button className="button" onClick={() => props.onSwitchTo(picked.id)}>{t('⏭ Đổi sang {title}', { title: t(picked.title) })}</button> : null}
-              {demoRunning ? <button className="button ghost" onClick={() => bot.setEnabled(false)}>{t('Tắt bot')}</button> : null}
-            </>
-          ) : (
-            <>
-              <button className="button primary large" onClick={props.onStart}>{t('▶ Bắt đầu')}</button>
-              {props.testVisible ? (
-                <button className="button" onClick={props.onDemo} title={t('Bắt đầu và cho viewer ảo tự chơi để xem overlay')}>{t('🤖 Chạy thử')}</button>
-              ) : null}
-            </>
-          )}
+    <div className="game-stack">
+      {locked ? <p className="field-hint">{t('Game đang chạy: chốt hoặc huỷ ván để sửa cài đặt.')}</p> : null}
+      {game.settings.map((field) => (
+        <SettingInput
+          key={field.key}
+          game={game}
+          field={field}
+          value={(raw[field.key] ?? game.defaultConfig[field.key]) as string | number}
+          disabled={locked}
+          onChange={(value) => props.onConfigChange(game.id, field.key, value)}
+          ai={props.ai}
+        />
+      ))}
+      {dictionaryLanguage && dictionaryInfo ? (
+        <div className="dictionary-row">
+          <span>{t(dictionaryLanguage === 'vi'
+            ? 'Từ điển tiếng Việt: {builtin} từ có sẵn + {imported} từ đã nhập'
+            : 'Từ điển tiếng Anh: {builtin} từ có sẵn + {imported} từ đã nhập', { builtin: dictionaryInfo.builtinCount, imported: dictionaryInfo.importedCount })}</span>
+          <input ref={fileInputRef} type="file" accept=".txt,text/plain" style={{ display: 'none' }} onChange={(event) => void handleDictionaryFile(event)} />
+          <button className="button small" onClick={() => fileInputRef.current?.click()}>{t('Nhập .txt')}</button>
+          {dictionaryInfo.importedCount ? <button className="button small ghost" onClick={() => props.onClearDictionary(dictionaryLanguage)}>{t('Xoá')}</button> : null}
         </div>
+      ) : null}
+      <div>
+        <button className="button small ghost" onClick={() => props.onResetConfig(game.id)} disabled={locked}>{t('Khôi phục cài đặt gốc')}</button>
+      </div>
+    </div>
+  );
+}
 
-        {game.phase !== 'idle' ? <RoundStatus game={game} view={view} /> : <p className="game-howto">{t(active.howTo)}</p>}
+interface TestToolsProps {
+  running: boolean;
+  testActions: TestAction[];
+  onTest: (input: TestInput) => void;
+  bot: DemoBot;
+  /** Generic test controls (commands, likes, gifts, free comment). */
+  extra: ReactNode;
+}
 
-        <div className="command-list">
-          {active.commands.map((command) => (
-            <span key={command.usage}><code>{t(command.usage)}</code> {t(command.description)}</span>
-          ))}
-        </div>
-
-        <details className="fold">
-          <summary>{t('⚙ Cài đặt game')}</summary>
-          <div className="fold-body">
-            {active.settings.map((field) => (
-              <SettingInput
-                key={field.key}
-                game={active}
-                field={field}
-                value={(raw[field.key] ?? active.defaultConfig[field.key]) as string | number}
-                disabled={running}
-                onChange={(value) => props.onConfigChange(active.id, field.key, value)}
-                ai={props.ai}
-              />
+/** Fake viewers for the running game, the demo bot and generic events. */
+export function TestTools({ running, testActions, onTest, bot, extra }: TestToolsProps) {
+  return (
+    <div className="game-stack">
+      {running ? (
+        <>
+          <span className="fold-label">{t('Giả lập viewer chơi game này')}</span>
+          <div className="check-row">
+            {testActions.map((action, index) => (
+              <button key={`${index}-${action.label}`} className="chip" onClick={() => onTest(action.input)}>{t(action.label)}</button>
             ))}
-            {dictionaryLanguage && dictionaryInfo ? (
-              <div className="dictionary-row">
-                <span>{t(dictionaryLanguage === 'vi'
-                  ? 'Từ điển tiếng Việt: {builtin} từ có sẵn + {imported} từ đã nhập'
-                  : 'Từ điển tiếng Anh: {builtin} từ có sẵn + {imported} từ đã nhập', { builtin: dictionaryInfo.builtinCount, imported: dictionaryInfo.importedCount })}</span>
-                <input ref={fileInputRef} type="file" accept=".txt,text/plain" style={{ display: 'none' }} onChange={(event) => void handleDictionaryFile(event)} />
-                <button className="button small" onClick={() => fileInputRef.current?.click()}>{t('Nhập .txt')}</button>
-                {dictionaryInfo.importedCount ? <button className="button small ghost" onClick={() => props.onClearDictionary(dictionaryLanguage)}>{t('Xoá')}</button> : null}
+          </div>
+          <div className="bot-row">
+            <label className="bot-toggle">
+              <input type="checkbox" checked={bot.enabled} onChange={(event) => bot.setEnabled(event.target.checked)} />
+              {t('🤖 Bot tự chơi')}
+            </label>
+            {bot.enabled ? (
+              <div className="segmented three" role="group" aria-label={t('Tốc độ bot')}>
+                {BOT_SPEEDS.map((option) => (
+                  <button key={option.value} className={bot.speed === option.value ? 'active' : ''} onClick={() => bot.setSpeed(option.value)}>{t(option.label)}</button>
+                ))}
               </div>
             ) : null}
-            <button className="button small ghost" onClick={() => props.onResetConfig(active.id)} disabled={running}>{t('Khôi phục cài đặt gốc')}</button>
           </div>
-        </details>
+        </>
+      ) : (
+        <p className="field-hint">{t('Bấm ▶ Bắt đầu (hoặc 🤖 Chạy thử) để hiện nút giả lập cho game này.')}</p>
+      )}
+      {extra}
+    </div>
+  );
+}
 
-        {props.testVisible ? (
-          <details className="fold">
-            <summary>{t('🧪 Test không cần LIVE')}</summary>
-            <div className="fold-body">
-              {running ? (
-                <>
-                  <span className="fold-label">{t('Giả lập viewer chơi game này')}</span>
-                  <div className="check-row">
-                    {props.testActions.map((action, index) => (
-                      <button key={`${index}-${action.label}`} className="chip" onClick={() => props.onTest(action.input)}>{t(action.label)}</button>
-                    ))}
-                  </div>
-                  <div className="bot-row">
-                    <label className="bot-toggle">
-                      <input type="checkbox" checked={bot.enabled} onChange={(event) => bot.setEnabled(event.target.checked)} />
-                      {t('🤖 Bot tự chơi')}
-                    </label>
-                    {bot.enabled ? (
-                      <div className="segmented three" role="group" aria-label={t('Tốc độ bot')}>
-                        {BOT_SPEEDS.map((option) => (
-                          <button key={option.value} className={bot.speed === option.value ? 'active' : ''} onClick={() => bot.setSpeed(option.value)}>{t(option.label)}</button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </>
-              ) : (
-                <p className="field-hint">{t('Bấm ▶ Bắt đầu (hoặc 🤖 Chạy thử) để hiện nút giả lập cho game này.')}</p>
-              )}
-              {props.extraTestTools}
-            </div>
-          </details>
-        ) : null}
-
-        <div className="leaderboard-block">
-          <div className="game-block-header">
-            <strong>{t('🏆 Bảng xếp hạng')}</strong>
-            <button className="button small ghost" onClick={props.onResetScores} disabled={!props.leaderboard.length}>Reset</button>
-          </div>
-          {props.leaderboard.length ? (
-            <ol className="vote-options">
-              {props.leaderboard.map((entry, index) => (
-                <li key={entry.user}>
-                  <span className="track-number">{index + 1}</span>
-                  <span className="track-name">{entry.nickname}</span>
-                  <strong>{entry.points}</strong>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="empty-copy flush">{t('Chưa có điểm. Điểm cộng dồn qua mọi game đến khi Reset.')}</p>
-          )}
-        </div>
-      </div>
+/** Points across every game until Reset. */
+export function LeaderboardCard({ leaderboard, onReset }: { leaderboard: ScoreEntry[]; onReset: () => void }) {
+  return (
+    <Panel title={t('🏆 Bảng xếp hạng')} aside={<button className="button small ghost" onClick={onReset} disabled={!leaderboard.length}>Reset</button>}>
+      {leaderboard.length ? (
+        <ol className="vote-options">
+          {leaderboard.map((entry, index) => (
+            <li key={entry.user}>
+              <span className="track-number">{index + 1}</span>
+              <span className="track-name">{entry.nickname}</span>
+              <strong>{entry.points}</strong>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="empty-copy flush">{t('Chưa có điểm. Điểm cộng dồn qua mọi game đến khi Reset.')}</p>
+      )}
     </Panel>
   );
 }

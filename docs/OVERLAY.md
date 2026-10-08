@@ -4,7 +4,7 @@ Viewers only see what the streaming software captures. The app therefore serves 
 
 ## URL and frame
 
-Build the link in panel **④ Đưa lên OBS**:
+Build the link in **⚙️ Cài đặt → 📺 OBS** (the home page's step ② opens the game window / copies the link with these settings):
 
 - **Frame:** 9:16 (1080×1920), 16:9 (1920×1080), 1:1 (1080×1080), 4:5 (1080×1350) or **Tuỳ chỉnh** (240–3840 px each side).
 - **Position:** 3×3 grid (top-left … bottom-right) for the widget column.

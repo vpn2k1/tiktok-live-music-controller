@@ -8,6 +8,7 @@ import type {
   LiveEvent,
   OverlayInfo,
   OverlayState,
+  SignKeyStatus,
   SimulatedEventInput,
   TikTokConnectResult,
   TikTokStatus
@@ -23,6 +24,8 @@ const desktopApi: DesktopApi = {
   selectAudioFiles: () => ipcRenderer.invoke('dialog:select-audio') as Promise<AudioTrack[]>,
   saveTextFile: (name: string, content: string) => ipcRenderer.invoke('dialog:save-text', name, content) as Promise<{ ok: boolean; error?: string }>,
   connectTikTok: (username: string) => ipcRenderer.invoke('tiktok:connect', username) as Promise<TikTokConnectResult>,
+  signKeyStatus: () => ipcRenderer.invoke('tiktok:sign-key-status') as Promise<SignKeyStatus | null>,
+  setSignKey: (key: string | null) => ipcRenderer.invoke('tiktok:set-sign-key', key) as Promise<{ ok: boolean; status: SignKeyStatus; error?: string } | null>,
   disconnectTikTok: () => ipcRenderer.invoke('tiktok:disconnect') as Promise<boolean>,
   simulateTikTokEvent: (event: SimulatedEventInput) => ipcRenderer.invoke('tiktok:simulate', event) as Promise<boolean>,
   onTikTokEvents: (callback: (batch: LiveEventBatch) => void) => on<LiveEventBatch>('tiktok:events', callback),

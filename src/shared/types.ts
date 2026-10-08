@@ -332,6 +332,17 @@ export interface SimulatedEventInput {
   total?: number;
 }
 
+/** Euler Stream API key for TikTok LIVE signing (the key itself stays in main). */
+export interface SignKeyStatus {
+  hasKey: boolean;
+  /** Last 4 characters, e.g. "…a1b2". */
+  hint: string | null;
+  /** Set by the SIGN_API_KEY environment variable (wins over the saved key). */
+  fromEnv: boolean;
+  /** False: the OS can't encrypt, so a saved key lasts until the app quits. */
+  persistent: boolean;
+}
+
 export interface TikTokConnectResult {
   connected: boolean;
   roomId?: string | number | null;
@@ -344,6 +355,9 @@ export interface DesktopApi {
   saveTextFile: (name: string, content: string) => Promise<{ ok: boolean; error?: string }>;
   connectTikTok: (username: string) => Promise<TikTokConnectResult>;
   disconnectTikTok: () => Promise<boolean>;
+  signKeyStatus: () => Promise<SignKeyStatus | null>;
+  /** Saves the Euler Stream key (null removes it). */
+  setSignKey: (key: string | null) => Promise<{ ok: boolean; status: SignKeyStatus; error?: string } | null>;
   simulateTikTokEvent: (event: SimulatedEventInput) => Promise<boolean>;
   /** LIVE events in batches (every ~100 ms), see src/shared/eventBatch.ts. */
   onTikTokEvents: (callback: (batch: LiveEventBatch) => void) => () => void;

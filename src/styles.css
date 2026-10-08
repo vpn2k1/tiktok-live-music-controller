@@ -598,3 +598,131 @@ img { max-width: 100%; }
 .chat-row p { margin: 2px 0 0; font-size: 13px; color: #eef2f8; overflow-wrap: anywhere; }
 .chat-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid #1e2531; color: #7f899a; }
 @media (max-width: 1100px) { .chat-list { height: 320px; } }
+
+/* ---------- Layout: sidebar tabs + one page at a time ---------- */
+.app-body { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 18px; align-items: start; }
+.side-nav {
+  position: sticky; top: 12px; display: grid; gap: 6px; padding: 8px; border-radius: 18px;
+  background: var(--field); border: 2px solid var(--ink); box-shadow: inset 0 2px 4px rgba(0,0,0,.4), 0 4px 0 var(--ink);
+}
+.side-nav button {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  padding: 10px 10px; border: 0; border-radius: 12px; background: transparent; cursor: pointer;
+  color: var(--text-dim); font-weight: 800; font-size: 15px; text-align: left;
+}
+.side-nav button:hover { background: rgba(255,255,255,.06); color: #efeaff; }
+.side-nav button.active {
+  color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.4);
+  background: linear-gradient(180deg, #b69cff 0 45%, #7c3aed 50%);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.4), 0 2px 0 var(--ink);
+}
+.nav-icon { font-size: 19px; text-align: center; }
+.nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-badge { min-width: 20px; padding: 0 6px; border-radius: 999px; font-size: 11px; line-height: 18px; text-align: center; color: #fb7185; }
+.nav-badge.count { color: #3b2a05; background: linear-gradient(180deg, #ffe680, #f5b400); border: 1px solid var(--ink); }
+.side-nav button.active .nav-badge:not(.count) { color: #fff; }
+.tab-pages { min-width: 0; }
+.tab-pages > [hidden] { display: none !important; }
+.page-single { display: grid; gap: 18px; }
+.page-narrow { display: grid; gap: 18px; max-width: 860px; }
+.dashboard-grid.even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Connection: status pill opens the popup; banner on the Control page while offline. */
+.status-button { cursor: pointer; font: inherit; }
+.status-button:hover { filter: brightness(1.15); }
+.status-button strong { color: #fff; }
+.status-action {
+  margin-left: 4px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 800; color: #3b2a05;
+  background: linear-gradient(180deg, #ffe680 0 45%, #f5b400 50%); border: 1px solid var(--ink);
+}
+.connect-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-radius: 16px;
+  border: 2px solid var(--ink); background: rgba(255,210,63,.1); box-shadow: inset 4px 0 0 var(--gold), 0 3px 0 var(--ink); font-weight: 700;
+}
+.connect-banner.error { background: rgba(251,113,133,.1); box-shadow: inset 4px 0 0 #fb7185, 0 3px 0 var(--ink); }
+.connect-banner .error-text { display: block; margin-top: 4px; font-weight: 600; }
+.sign-key-state { margin: 0; font-weight: 700; color: #efeaff; }
+
+/* ---------- Popups (native <dialog>) ---------- */
+.modal { padding: 0; border: 0; background: transparent; color: inherit; max-width: none; max-height: none; overflow: visible; }
+.modal::backdrop { background: rgba(6, 4, 20, .72); backdrop-filter: blur(3px); }
+.modal-box {
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
+  border-radius: 20px; border: 2px solid var(--ink); overflow: hidden;
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bottom));
+  box-shadow: inset 0 0 0 2px rgba(124,92,255,.28), 0 6px 0 var(--ink), 0 30px 80px rgba(0,0,0,.6);
+}
+.modal-lg .modal-box { width: min(860px, calc(100vw - 32px)); }
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 0 8px 0 18px;
+  border-bottom: 2px solid var(--ink); background: linear-gradient(180deg, rgba(124,92,255,.32), rgba(124,92,255,.06));
+}
+.modal-header h2 { margin: 0; font-size: 18px; font-weight: 800; text-shadow: 0 2px 0 var(--ink); }
+.modal-header .icon-button { border: 0; border-radius: 10px; height: 40px; }
+.modal-body { overflow: auto; padding: 18px; }
+.modal-footer {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 18px;
+  border-top: 2px solid var(--ink); background: rgba(0,0,0,.18);
+}
+.modal-footer-note { margin-right: auto; color: var(--text-dim); font-size: 13px; font-weight: 700; min-width: 0; }
+.modal-title-game { display: inline-flex; align-items: center; gap: 10px; }
+.modal-title-game .game-card-icon { width: 36px; height: 36px; font-size: 20px; }
+.modal-section { margin: 6px 0 0; font-size: 15px; color: #efeaff; }
+
+/* Start popup: game list. */
+.pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; max-height: 46vh; overflow: auto; padding: 2px; }
+.pick-item {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 10px; padding: 8px 10px; text-align: left;
+  border-radius: 14px; border: 2px solid var(--ink); background: linear-gradient(180deg, #2a2463, #1d1850); color: #efeaff; cursor: pointer;
+  box-shadow: 0 2px 0 var(--ink);
+}
+.pick-item:hover { filter: brightness(1.15); }
+.pick-item.active { background: linear-gradient(180deg, #ffe680 0 45%, #f5b400 50%); color: #3b2a05; }
+.pick-item.active small { color: #5c4300; }
+.pick-item.running { outline: 2px solid #34d399; outline-offset: 1px; }
+.pick-item .game-card-icon { width: 40px; height: 40px; font-size: 22px; }
+.pick-item .game-card-icon.wide, .modal-title-game .game-card-icon.wide { font-size: 11px; letter-spacing: -1px; }
+.pick-text { display: grid; gap: 2px; min-width: 0; }
+.pick-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 12px; }
+.group-run { display: grid; gap: 10px; }
+.group-run p { margin: 0; }
+.chip.static { cursor: default; }
+
+@media (max-width: 900px) {
+  .app-body { grid-template-columns: 1fr; }
+  .side-nav { position: static; display: flex; overflow-x: auto; scrollbar-width: thin; scrollbar-color: #4c3fa8 transparent; }
+  .side-nav button { grid-template-columns: auto auto auto; flex: 0 0 auto; padding: 8px 10px; }
+  .dashboard-grid.even { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .nav-label { display: none; }
+  .connect-banner { flex-direction: column; align-items: stretch; }
+}
+
+/* ---------- Home: 3 steps to go LIVE ---------- */
+.quick-steps { list-style: none; margin: 0; padding: 18px; display: grid; gap: 14px; }
+.quick-step {
+  display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 14px; align-items: start; padding: 16px;
+  border-radius: 18px; border: 2px solid var(--ink); background: rgba(255,255,255,.04); box-shadow: 0 3px 0 var(--ink);
+}
+.quick-step.done { background: rgba(52,211,153,.08); }
+.quick-step-number {
+  width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; border: 3px solid var(--ink);
+  font-size: 22px; font-weight: 800; color: #3b2a05; background: linear-gradient(180deg, #ffe680 0 45%, #f5b400 50%);
+  box-shadow: 0 3px 0 var(--ink);
+}
+.quick-step.done .quick-step-number { color: #fff; background: linear-gradient(180deg, #6ee7b7 0 45%, #10b981 50%); }
+.quick-step-body { display: grid; gap: 10px; min-width: 0; }
+.quick-step-body h3 { margin: 10px 0 0; font-size: 19px; font-weight: 800; color: #fff; text-shadow: 0 2px 0 var(--ink); }
+.quick-step-body .field-hint, .quick-step-body .error-text { margin: 0; }
+.quick-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.quick-ok { font-weight: 800; color: #6ee7b7; }
+.link-button.inline { margin: 0; font-size: inherit; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.settings-tabs { grid-template-columns: repeat(5, 1fr); }
+.settings-tabs button { font-size: 14px; padding: 9px 6px; }
+@media (max-width: 520px) {
+  .quick-step { grid-template-columns: 1fr; }
+  .settings-tabs { grid-template-columns: repeat(3, 1fr); }
+}

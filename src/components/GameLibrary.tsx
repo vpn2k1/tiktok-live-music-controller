@@ -9,7 +9,8 @@ interface GameLibraryProps {
   games: AnyGame[];
   selectedId: string;
   runningId: string | null;
-  onSelect: (id: string) => void;
+  /** Opens the game's popup (how to play, settings, play). */
+  onOpen: (id: string) => void;
   groups: GameGroup[];
   activeGroupId: string;
   onGroupsChange: (patch: { groups?: GameGroup[]; activeGroupId?: string }) => void;
@@ -28,7 +29,7 @@ function shortDescription(text: string): string {
 }
 
 /** Game picker grouped by category, plus the game groups viewers will see on LIVE. */
-export default function GameLibrary({ games, selectedId, runningId, onSelect, groups, activeGroupId, onGroupsChange, autoRunning, runHint, onRun, onStopRun }: GameLibraryProps) {
+export default function GameLibrary({ games, selectedId, runningId, onOpen, groups, activeGroupId, onGroupsChange, autoRunning, runHint, onRun, onStopRun }: GameLibraryProps) {
   const categories = [...new Set(games.map((game) => game.category))] as GameCategory[];
   const active = groups.find((group) => group.id === activeGroupId) ?? groups[0];
   // The built-in "all games" group always holds every game (see normalizeGroups).
@@ -61,7 +62,7 @@ export default function GameLibrary({ games, selectedId, runningId, onSelect, gr
   }
 
   return (
-    <Panel title={t('② Chọn game')} aside={runningId ? t('Chốt hoặc huỷ game đang chạy để đổi') : t('{n} game', { n: games.length })}>
+    <Panel title={t('📚 Thư viện game')} aside={t('{n} game', { n: games.length })}>
       <div className="library">
         <section className="group-bar">
           <h3>{t('✅ Chọn 1 hoặc nhiều game để chạy')}</h3>
@@ -85,7 +86,7 @@ export default function GameLibrary({ games, selectedId, runningId, onSelect, gr
             </div>
           ) : null}
           <p className="field-hint">
-            {t('Bấm ✓ / ＋ ở góc thẻ để chọn / bỏ game. Lưu nhiều bộ game thành nhiều nhóm.')}{' '}
+            {t('Bấm vào thẻ để xem cách chơi, cài đặt và chơi game. Bấm ✓ / ＋ ở góc thẻ để thêm / bỏ game khỏi nhóm.')}{' '}
             <strong>{t('Viewer chỉ thấy và chọn được {n} game của nhóm này', { n: active?.gameIds.length ?? 0 })}</strong>{' '}
             {t('(số trên thẻ = số viewer gõ khi bầu chọn).')}{(active?.gameIds.length ?? 0) > 10 ? ` ${t('Nhóm dài có thể tràn overlay, nên để ≤ 10 game.')}` : ''}
             {locked ? ` ${t('Nhóm “Tất cả game” luôn gồm mọi game; bấm ＋ Nhóm mới để chọn riêng.')}` : ''}
@@ -117,9 +118,8 @@ export default function GameLibrary({ games, selectedId, runningId, onSelect, gr
                     <div key={game.id} className={`game-card-shell ${number ? 'in-group' : 'out-group'}`}>
                       <button
                         className={`game-card ${selected ? 'selected' : ''} ${running ? 'running' : ''}`}
-                        onClick={() => onSelect(game.id)}
-                        disabled={Boolean(runningId) && !running}
-                        aria-pressed={selected}
+                        onClick={() => onOpen(game.id)}
+                        aria-haspopup="dialog"
                       >
                         <span className={`game-card-icon ${game.category} ${icon.length > 4 ? 'wide' : ''}`} aria-hidden="true">{icon}</span>
                         <span className="game-card-text">

@@ -18,6 +18,7 @@ import type {
 import { EVENT_BATCH_MS, LiveEventBatcher, type LiveEventBatch } from '../src/shared/eventBatch';
 import { isLanguage, setLanguage, t } from '../src/shared/i18n';
 import { aiStatus, generateAi, setAiKey, setAiSettings, testAi } from './ai';
+import { applySignKey, setSignKey, signApiKey, signKeyStatus } from './signKey';
 import { publishOverlay, startOverlayServer, stopOverlayServer } from './overlay-server';
 import { closeOverlayWindow, onOverlayWindowAction, onOverlayWindowChange, openOverlayWindow } from './overlay-window';
 import type { OverlayWindowAction } from '../src/shared/overlay';
@@ -225,10 +226,11 @@ async function connectTikTok(rawUsername: string) {
     } catch (error) {
       const current = liveConnection === connection;
       if (current) liveConnection = null;
-      console.warn(`[tiktok] @${username}: connect attempt ${attempt}/${SIGN_RETRIES} failed: ${errorText(error).slice(0, 200)}`);
-      if (current && attempt < SIGN_RETRIES && isRetryableSignError(error)) {
-        emitStatus('connecting', { username, message: 'Máy chủ Euler Stream lỗi, đang thử lại ({n}/{max})…'.replace('{n}', String(attempt + 1)).replace('{max}', String(SIGN_RETRIES)) });
-        await new Promise((resolve) => setTimeout(resolve, SIGN_RETRY_DELAY_MS));
+      const { retries, delayMs } = signRetries();
+      console.warn(`[tiktok] @${username}: connect attempt ${attempt}/${retries} failed: ${errorText(error).slice(0, 200)}`);
+      if (current && attempt < retries && isRetryableSignError(error)) {
+        emitStatus('connecting', { username, message: 'Máy chủ Euler Stream lỗi, đang thử lại ({n}/{max})…'.replace('{n}', String(attempt + 1)).replace('{max}', String(retries)) });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
         // The streamer pressed Disconnect / connected elsewhere meanwhile.
         if (liveConnection !== null || pendingUsername !== username) return { connected: false };
         continue;
@@ -245,13 +247,14 @@ async function connectTikTok(rawUsername: string) {
 /** Connections whose connect() has finished (errors before that are connectTikTok's to report). */
 const settled = new WeakSet<TikTokLiveConnection>();
 // Euler Stream's free tier allows only a few sign requests a minute per network (failed ones
-// count too); with an API key (SIGN_API_KEY) the limit is higher, so retry more and sooner.
-const HAS_SIGN_KEY = Boolean(process.env.SIGN_API_KEY);
-const SIGN_RETRIES = HAS_SIGN_KEY ? 6 : 3;
-const SIGN_RETRY_DELAY_MS = HAS_SIGN_KEY ? 2000 : 6000;
+// count too); with an API key (Cài đặt → TikTok, or SIGN_API_KEY) the limit is higher, so retry more and sooner.
+function signRetries(): { retries: number; delayMs: number } {
+  return signApiKey() ? { retries: 6, delayMs: 2000 } : { retries: 3, delayMs: 6000 };
+}
 
 /** A new connection for `username` with every event wired; it becomes the current one. */
 function openConnection(username: string): TikTokLiveConnection {
+  applySignKey();
   const connection = new TikTokLiveConnection(username, {});
   liveConnection = connection;
   pendingUsername = username;
@@ -459,6 +462,9 @@ app.whenReady().then(async () => {
   onOverlayWindowAction((action) => send<OverlayWindowAction>('overlay:window-action', action));
 
   ipcMain.handle('tiktok:connect', (_event, username: string) => connectTikTok(username));
+  // Euler Stream key (electron/signKey.ts): only the controller window, never readable back.
+  ipcMain.handle('tiktok:sign-key-status', (event) => (fromMainWindow(event) ? signKeyStatus() : null));
+  ipcMain.handle('tiktok:set-sign-key', (event, key: unknown) => (fromMainWindow(event) ? setSignKey(key) : null));
   ipcMain.handle('tiktok:disconnect', () => disconnectTikTok());
 
   ipcMain.handle('tiktok:simulate', (_event, raw: SimulatedEventInput | null) => {

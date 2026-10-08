@@ -23,6 +23,20 @@ media://track/<token>
 Electron custom protocol → local file
 ```
 
+## Controller layout
+
+`src/App.tsx` holds the state; the screen is split into 5 sidebar tabs (every page stays mounted, hidden when inactive, so music keeps playing):
+
+| Tab | Content |
+|---|---|
+| 🏠 Trang chính | Before a game runs: **3 bước để LIVE** (`QuickStart`: ① username + Kết nối, ② open the game window / copy the OBS link, ③ auto-play the group, pick 1 game, or Chạy thử), each step ticks itself. While playing: the round (`LiveGameCard`), auto run status (`AutoPlayStatus`), leaderboard |
+| 📚 Game | `GameLibrary` (groups + cards); a card opens `GameDetailsModal` (how to play, commands, settings, play) |
+| 💬 Bình luận | comment history + LIVE log |
+| 🎵 Nhạc | player, playlist, music rules |
+| ⚙️ Cài đặt | sub-tabs: 🔊 Chung (`FeaturesPanel`), 🔁 Tự động (`AutoPlaySettingsPanel`), 📺 OBS (`OverlayPanel`), 🤖 AI (`AiPanel`), 🔑 TikTok (`SignKeyField`) |
+
+Popups (`Modal`, native `<dialog>`): **▶ Bắt đầu game** / **🎯 Chọn 1 game** (`StartModal`: one game, or auto-run the group), game details, **🧪 Test** tools, and the TikTok connection (status pill in the top bar → `ConnectModal`).
+
 ## Games
 
 ```text

@@ -12,8 +12,7 @@ export const EN_APP: Record<string, string> = {
   'Đang kết nối…': 'Connecting…',
   'Đã kết nối': 'Connected',
   'Lỗi kết nối': 'Connection error',
-  'Chọn game rồi bấm ▶ Bắt đầu, hoặc 🤖 Chạy thử để xem overlay.': 'Pick a game and press ▶ Start, or 🤖 Demo to preview the overlay.',
-  '① Kết nối TikTok': '① Connect TikTok',
+  'Làm theo 3 bước ở 🏠 Trang chính: kết nối TikTok → đưa game lên OBS → bấm ▶ Tự chơi.': 'Follow the 3 steps on 🏠 Home: connect TikTok → put the game on OBS → press ▶ Auto-play.',
   '@username đang LIVE': '@username who is LIVE',
   'Ngắt kết nối': 'Disconnect',
   'Kết nối': 'Connect',
@@ -23,7 +22,6 @@ export const EN_APP: Record<string, string> = {
   'Chưa LIVE vẫn thử được: chọn game rồi bấm 🤖 Chạy thử.': 'Not LIVE yet? You can still try: pick a game and press 🤖 Demo.',
   'Vào phòng': 'Joined',
   'Overlay đã sẵn sàng.': 'Overlay is ready.',
-  '🎮 Chọn & chuyển game': '🎮 Pick & switch games',
 
   // ── Messages from the main process (translated in the renderer) ────────
   'Hãy nhập username TikTok.': 'Please enter a TikTok username.',
@@ -51,8 +49,6 @@ export const EN_APP: Record<string, string> = {
   'viewer bầu chọn game tiếp theo, {per}': 'viewers vote for the next game, {per}',
   'ngẫu nhiên': 'random order',
   'lần lượt': 'in order',
-  '{how}, dừng sau {minutes} phút (chỉnh ở panel {panel})': '{how}, stops after {minutes} min (change in the {panel} panel)',
-  '{how} (chỉnh ở panel {panel})': '{how} (change in the {panel} panel)',
 
   // ── Game test tools, dictionary, LIVE log ──────────────────────────────
   'Đã nhập {count} từ vào từ điển {language}': 'Imported {count} words into the {language} dictionary',
@@ -156,7 +152,6 @@ export const EN_APP: Record<string, string> = {
   'Phát trong app, OBS thu cùng âm thanh app': 'Plays in the app; OBS captures it with the app audio',
 
   // ── OBS panel (OverlayPanel, OverlayPreview, shared/overlay.ts labels) ─
-  '④ Đưa lên OBS': '④ Put it on OBS',
   'Đang mở overlay server…': 'Starting the overlay server…',
   'Đã copy link. OBS → Browser Source → dán link, {width}×{height}': 'Link copied. OBS → Browser Source → paste the link, {width}×{height}',
   'Không copy được: {error}': 'Could not copy: {error}',

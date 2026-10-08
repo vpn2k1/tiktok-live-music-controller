@@ -32,7 +32,7 @@ src/main.tsx
 src/components/Panel.tsx
 src/components/Toggle.tsx
 src/components/OverlayPreview.tsx
-src/components/GamePanel.tsx
+src/components/GameParts.tsx
 src/components/OverlayPanel.tsx
 src/components/FeaturesPanel.tsx
 src/game/engine.ts

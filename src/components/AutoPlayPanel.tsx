@@ -6,10 +6,9 @@ import { t } from '../shared/i18n';
 import Panel from './Panel';
 import Toggle from './Toggle';
 
-interface AutoPlayPanelProps {
+interface AutoPlayStatusProps {
   games: AnyGame[];
   settings: AutoPlaySettings;
-  onChange: (patch: Partial<AutoPlaySettings>) => void;
   session: AutoPlaySession | null;
   /** The game being played round after round (null = none). */
   loop: PlayLoop | null;
@@ -21,6 +20,14 @@ interface AutoPlayPanelProps {
   onExtend: (minutes: number) => void;
   lobby: LobbyState | null;
   onResolveLobby: () => void;
+}
+
+interface AutoPlaySettingsProps {
+  games: AnyGame[];
+  settings: AutoPlaySettings;
+  onChange: (patch: Partial<AutoPlaySettings>) => void;
+  session: AutoPlaySession | null;
+  gift: GiftSwitchState;
 }
 
 /** 1:05:09 or 05:09. */
@@ -38,18 +45,17 @@ const SWITCH_OPTIONS: { value: SwitchBy; label: string }[] = [
   { value: 'time', label: 'Chơi đủ số phút' }
 ];
 
-/** The game being played, how it switches (rounds, time, gift, !doigame, the viewer list) and the LIVE length. */
-export default function AutoPlayPanel({ games, settings, onChange, session, loop, gift, onBegin, onStop, onSkip, onSwitchLater, onExtend, lobby, onResolveLobby }: AutoPlayPanelProps) {
+/** Control tab: viewer voting, the game played round after round, and the auto session (LIVE time, on / off). */
+export function AutoPlayStatus({ games, settings, session, loop, onBegin, onStop, onSkip, onSwitchLater, onExtend, lobby, onResolveLobby }: AutoPlayStatusProps) {
   const now = useNow(session != null || loop != null || lobby?.endsAt != null, 1000);
   const group = activeGroup(settings);
   const current = games.find((game) => game.id === loop?.gameId);
-  const [switchCommandBefore, switchCommandAfter = ''] = t('Đủ số viewer gõ {command} thì hết ván này sẽ quay lại màn chọn game. Streamer/mod gõ là đủ. 0 = viewer không đổi được.').split('{command}');
   const switchRule = settings.switchBy === 'rounds' ? t('ván {n}/{total}', { n: Math.min(settings.roundsPerGame, (loop?.roundsPlayed ?? 0) + 1), total: settings.roundsPerGame })
     : settings.switchBy === 'time' && loop ? t('đổi sau {time}', { time: formatDuration(loop.since + settings.switchMinutes * 60_000 - now) })
       : t('ván {n} · chơi mãi', { n: (loop?.roundsPlayed ?? 0) + 1 });
 
   return (
-    <Panel title={t('🎮 Chọn & chuyển game')} aside={session ? <span className="live-badge">{t('● Đang tự động')}</span> : t('Tự động: tắt')}>
+    <Panel title={t('🔁 Chạy tự động')} aside={session ? <span className="live-badge">{t('● Đang tự động')}</span> : t('Tự động: tắt')}>
       <div className="game-stack">
         {lobby ? (
           <div className="lobby-status">
@@ -103,8 +109,20 @@ export default function AutoPlayPanel({ games, settings, onChange, session, loop
           </div>
         )}
         <p className="group-note">
-          {t('📚 Nhóm game đang dùng:')} <strong>{groupLabel(group)}</strong> {t('({n} game). Viewer chỉ thấy và chọn được các game này; đổi nhóm ở ② Chọn game.', { n: group?.gameIds.length ?? games.length })}
+          {t('📚 Nhóm game đang dùng:')} <strong>{groupLabel(group)}</strong> {t('({n} game). Viewer chỉ thấy và chọn được các game này; đổi nhóm ở tab 📚 Game.', { n: group?.gameIds.length ?? games.length })}
         </p>
+      </div>
+    </Panel>
+  );
+}
+
+/** Auto tab: how games switch (rounds, time, gift, !doigame, the viewer list) and the LIVE length. */
+export default function AutoPlaySettingsPanel({ settings, onChange, session, gift }: AutoPlaySettingsProps) {
+  const [switchCommandBefore, switchCommandAfter = ''] = t('Đủ số viewer gõ {command} thì hết ván này sẽ quay lại màn chọn game. Streamer/mod gõ là đủ. 0 = viewer không đổi được.').split('{command}');
+
+  return (
+    <Panel title={t('🔁 Cài đặt chạy tự động')} aside={session ? <span className="live-badge">{t('● Đang tự động')}</span> : t('Tự động: tắt')}>
+      <div className="game-stack">
         <p className="field-hint">{settings.lobbyEnabled
           ? t('Game đang chơi tự chạy ván mới liên tục. Khi có lệnh đổi game (quà, !doigame) thì chờ hết ván, chúc mừng người thắng rồi mở danh sách cho viewer chọn; không ai chọn hoặc hoà phiếu thì bốc ngẫu nhiên.')
           : t('Game đang chơi tự chạy ván mới liên tục. Khi có lệnh đổi game (quà, !doigame) thì chờ hết ván rồi sang game tiếp theo.')}</p>

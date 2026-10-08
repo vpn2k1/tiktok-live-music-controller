@@ -72,6 +72,12 @@ function loadFrame(): SavedFrame {
   }
 }
 
+/** The frame set up in this panel (read fresh), for the quick start buttons on the home page. */
+export function savedOverlaySetup(): { linkConfig: OverlayConfig; windowConfig: OverlayConfig } {
+  const { config, windowBackground } = loadFrame();
+  return { linkConfig: config, windowConfig: { ...config, background: windowBackground } };
+}
+
 export default function OverlayPanel({ info, onAction, onOpenWindow, windowOpen, onCloseWindow }: OverlayPanelProps) {
   const [{ config, windowBackground }, setFrame] = useState<SavedFrame>(loadFrame);
   const [customPicked, setCustomPicked] = useState(false);
@@ -115,14 +121,14 @@ export default function OverlayPanel({ info, onAction, onOpenWindow, windowOpen,
 
   if (!link) {
     return (
-      <Panel title={t('④ Đưa lên OBS')}>
+      <Panel title={t('📺 Đưa lên OBS')}>
         <p className="error-text">{info.error || t('Đang mở overlay server…')}</p>
       </Panel>
     );
   }
 
   return (
-    <Panel title={t('④ Đưa lên OBS')} aside={`${config.width}×${config.height}`}>
+    <Panel title={t('📺 Đưa lên OBS')} aside={`${config.width}×${config.height}`}>
       <div className="game-stack">
         <div className="frame-presets" role="group" aria-label={t('Khung video')}>
           {[...(Object.keys(FRAME_PRESETS) as (keyof typeof FRAME_PRESETS)[]), 'custom' as const].map((key) => (

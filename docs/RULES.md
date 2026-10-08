@@ -190,7 +190,7 @@ Game commands (only while that game runs): `!vote 2`, `!hit` (boss, `chatDamage`
 
 ## Tự động chuyển game (auto host)
 
-Panel "🎮 Chọn & chuyển game" in the Game tab (`src/game/autoplay.ts` pure logic — `hostStep` decides each tick, tested in `tests/host.test.ts` — and `src/game/useAutoPlay.ts` timers). Settings persist in `localStorage` (`autoplay-settings`, `version` 2).
+**⚙️ Cài đặt → 🔁 Tự động** (settings; the live status — voting, current game, LIVE time — is on **🏠 Trang chính**) (`src/game/autoplay.ts` pure logic — `hostStep` decides each tick, tested in `tests/host.test.ts` — and `src/game/useAutoPlay.ts` timers). Settings persist in `localStorage` (`autoplay-settings`, `version` 2).
 
 ### Endless play (play loop)
 
@@ -223,7 +223,7 @@ Panel "🎮 Chọn & chuyển game" in the Game tab (`src/game/autoplay.ts` pure
 
 ### Run one or several games
 
-In "② Chọn game": tick games with ✓ / ＋ on the cards (the active group), then **▶ Chạy N game đã chọn** (starts the auto session; **⏹ Dừng chạy tự động** stops it). With "Viewer chọn game" on, viewers vote the next game among the ticked ones; otherwise the next one follows the order (sequential/random).
+In tab **📚 Game**: tick games with ✓ / ＋ on the cards (the active group), then **▶ Chạy N game đã chọn** (starts the auto session; **⏹ Dừng chạy tự động** stops it). With "Viewer chọn game" on, viewers vote the next game among the ticked ones; otherwise the next one follows the order (sequential/random).
 
 ### Bank files (điền chữ, chọn đáp án…)
 
@@ -244,7 +244,7 @@ Every bank field (Quiz, English Quiz, Đua vịt, Unscramble, Dịch nhanh, Emoj
 
 ### Nhóm game (game groups)
 
-Set up in "② Chọn game" before going LIVE: `groups` + `activeGroupId` in `autoplay-settings` (validated by `normalizeGroups`).
+Set up in tab **📚 Game** before going LIVE: `groups` + `activeGroupId` in `autoplay-settings` (validated by `normalizeGroups`).
 
 - Starter groups: "Giải trí 🎉" (fun games), "Tiếng Anh 🇬🇧" (English games), "Tất cả game" (always every game, new ones included; its ✓ buttons are locked). "＋ Nhóm mới" (max 12) starts with the selected game; rename in the text box, "Xoá nhóm" (the last group can't be deleted).
 - The ✓ / ＋ button on each game card adds/removes it from the active group (a group keeps at least one game). Cards outside the group are dimmed; cards inside show their number — the number viewers type in the list (library order).
